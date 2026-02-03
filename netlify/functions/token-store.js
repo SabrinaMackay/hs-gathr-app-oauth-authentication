@@ -16,7 +16,7 @@ const saveTokens = async (tokens) => {
     updatedAt: Date.now()
   };
 
-  console.log('📝 Tokens would be saved to database (using cache for now)');
+  console.log('[STORE] Tokens would be saved to database (using cache for now)');
   console.log('   Access token (first 10 chars):', tokenData.accessToken.substring(0, 10) + '...');
   console.log('   Expires at:', new Date(tokenData.expiresAt).toISOString());
   
@@ -24,7 +24,7 @@ const saveTokens = async (tokens) => {
   cachedTokens = tokenData;
   cacheTimestamp = Date.now();
   
-  console.log('⚠️  NOTE: Tokens are cached in memory only');
+  console.log('[WARN] NOTE: Tokens are cached in memory only');
   console.log('   For production, set HUBSPOT_ACCESS_TOKEN and HUBSPOT_REFRESH_TOKEN as environment variables');
   
   return tokenData;
@@ -43,19 +43,19 @@ const getTokens = async () => {
       updatedAt: Date.now()
     };
     
-    console.log('✅ Tokens loaded from environment variables');
+    console.log('[OK] Tokens loaded from environment variables');
     console.log('   Expires at:', new Date(tokens.expiresAt).toISOString());
     return tokens;
   }
   
   // Fall back to cached tokens (from recent OAuth flow)
   if (cachedTokens && (Date.now() - cacheTimestamp) < CACHE_TTL * 10) { // 10 minute cache for tokens
-    console.log('✅ Tokens loaded from cache');
+    console.log('[OK] Tokens loaded from cache');
     console.log('   Cached:', Math.round((Date.now() - cacheTimestamp) / 1000), 'seconds ago');
     return cachedTokens;
   }
   
-  console.log('❌ No tokens found in environment or cache');
+  console.log('[ERROR] No tokens found in environment or cache');
   return null;
 };
 

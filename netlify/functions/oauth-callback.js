@@ -105,7 +105,7 @@ exports.handler = async (event, context) => {
   }
 
   // Save tokens to cache and log for manual setup
-  console.log('===> ✅ OAuth tokens received successfully!');
+  console.log('===> [OK] OAuth tokens received successfully!');
   console.log('       Access Token (first 10 chars):', tokens.access_token.substring(0, 10) + '...');
   console.log('       Refresh Token (first 10 chars):', tokens.refresh_token.substring(0, 10) + '...');
   console.log('       Expires in:', tokens.expires_in, 'seconds');
@@ -114,7 +114,7 @@ exports.handler = async (event, context) => {
   await saveTokens(tokens);
   
   console.log('');
-  console.log('📝 For persistent storage, copy these tokens to Netlify environment variables:');
+  console.log('[SETUP] For persistent storage, copy these tokens to Netlify environment variables:');
   console.log('   HUBSPOT_ACCESS_TOKEN=' + tokens.access_token);
   console.log('   HUBSPOT_REFRESH_TOKEN=' + tokens.refresh_token);
   console.log('');
@@ -192,29 +192,29 @@ exports.handler = async (event, context) => {
       </head>
       <body>
         <div class="success">
-          <div class="checkmark">✓</div>
+          <div class="checkmark">OK</div>
           <h2>OAuth Tokens Received!</h2>
           <p>HubSpot authentication was successful.</p>
-          <p>✅ Tokens are cached for 10 minutes for immediate testing</p>
+          <p>[OK] Tokens are cached for 10 minutes for immediate testing</p>
         </div>
         
         <div class="warning">
-          <h3>⚙️ Required: Add Tokens to Netlify Environment Variables</h3>
+          <h3>[SETUP] Required: Add Tokens to Netlify Environment Variables</h3>
           <p><strong>For persistent storage, add these tokens to your Netlify environment variables:</strong></p>
           
           <div>
             <strong>HUBSPOT_ACCESS_TOKEN</strong>
             <div class="token-box" id="access-token">${tokens.access_token}</div>
-            <button class="copy-btn" onclick="copyToken('access-token')">📋 Copy Access Token</button>
+            <button class="copy-btn" onclick="copyToken('access-token')">Copy Access Token</button>
           </div>
           
           <div>
             <strong>HUBSPOT_REFRESH_TOKEN</strong>
             <div class="token-box" id="refresh-token">${tokens.refresh_token}</div>
-            <button class="copy-btn" onclick="copyToken('refresh-token')">📋 Copy Refresh Token</button>
+            <button class="copy-btn" onclick="copyToken('refresh-token')">Copy Refresh Token</button>
           </div>
 
-          <h3>📝 Steps to Complete Setup:</h3>
+          <h3>[STEPS] Steps to Complete Setup:</h3>
           <ol>
             <li>Go to your <a href="https://app.netlify.com" target="_blank">Netlify Dashboard</a></li>
             <li>Select your site: <strong>hs-gathr-oauth</strong></li>
@@ -237,7 +237,7 @@ exports.handler = async (event, context) => {
             navigator.clipboard.writeText(text).then(() => {
               const btn = event.target;
               const originalText = btn.textContent;
-              btn.textContent = '✓ Copied!';
+              btn.textContent = 'Copied!';
               setTimeout(() => {
                 btn.textContent = originalText;
               }, 2000);

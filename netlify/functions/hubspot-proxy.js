@@ -4,18 +4,18 @@ const { getTokens, saveTokens, needsRefresh } = require('./token-store');
 
 // Function to get the current access token (with auto-refresh)
 const getAccessToken = async () => {
-  console.log('🔑 Getting access token...');
+  console.log('[AUTH] Getting access token...');
   
   // Try to get from persistent storage first
   try {
     const tokens = await getTokens();
     
     if (tokens && tokens.accessToken) {
-      console.log('   ✓ Found tokens in storage');
+      console.log('   [OK] Found tokens in storage');
       
       // Check if token needs refresh
       if (needsRefresh(tokens)) {
-        console.log('   🔄 Token expired or expiring soon, refreshing...');
+        console.log('   [REFRESH] Token expired or expiring soon, refreshing...');
         const newTokens = await refreshAccessToken(tokens.refreshToken);
         return newTokens.accessToken;
       }
@@ -23,22 +23,22 @@ const getAccessToken = async () => {
       return tokens.accessToken;
     }
   } catch (error) {
-    console.log('   ⚠️ Error accessing token storage:', error.message);
+    console.log('   [WARN] Error accessing token storage:', error.message);
   }
   
   // Fallback to environment variables (for backward compatibility)
   if (process.env.HUBSPOT_ACCESS_TOKEN) {
-    console.log('   ✓ Falling back to environment variable');
+    console.log('   [OK] Falling back to environment variable');
     return process.env.HUBSPOT_ACCESS_TOKEN;
   }
   
-  console.log('   ✗ No access token found');
+  console.log('   [ERROR] No access token found');
   return null;
 };
 
 // Refresh token and save to persistent storage
 const refreshAccessToken = async (refreshToken) => {
-  console.log('🔄 Refreshing access token...');
+  console.log('[REFRESH] Refreshing access token...');
   
   const CLIENT_ID = process.env.CLIENT_ID;
   const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -68,11 +68,11 @@ const refreshAccessToken = async (refreshToken) => {
   const tokens = await response.json();
   
   if (!response.ok) {
-    console.error('❌ Token refresh failed:', tokens);
+    console.error('[ERROR] Token refresh failed:', tokens);
     throw new Error(`Failed to refresh token: ${tokens.message || response.statusText}`);
   }
 
-  console.log('✅ Token refreshed successfully');
+  console.log('[OK] Token refreshed successfully');
   
   // Save new tokens to persistent storage
   const newTokenData = {
@@ -83,16 +83,16 @@ const refreshAccessToken = async (refreshToken) => {
 
   try {
     await saveTokens(newTokenData);
-    console.log('   ✅ New tokens saved to storage');
+    console.log('   [OK] New tokens saved to storage');
   } catch (error) {
-    console.error('   ⚠️ Failed to save refreshed tokens:', error.message);
+    console.error('   [WARN] Failed to save refreshed tokens:', error.message);
   }
 
   return newTokenData;
 };
 
 exports.handler = async (event, context) => {
-  console.log('🚀 HubSpot Proxy Function Invoked');
+  console.log('[PROXY] HubSpot Proxy Function Invoked');
   console.log('   Method:', event.httpMethod);
   console.log('   Headers:', JSON.stringify(event.headers, null, 2));
   
@@ -112,11 +112,11 @@ exports.handler = async (event, context) => {
 
   try {
     // Get access token (now async with auto-refresh)
-    console.log('🔐 Attempting to get access token...');
+    console.log('[AUTH] Attempting to get access token...');
     let accessToken = await getAccessToken();
     
     if (!accessToken) {
-      console.error('❌ No access token available');
+      console.error('[ERROR] No access token available');
       return {
         statusCode: 401,
         headers,
@@ -128,13 +128,13 @@ exports.handler = async (event, context) => {
       };
     }
 
-    console.log('✓ Access token found, length:', accessToken.length);
+    console.log('[OK] Access token found, length:', accessToken.length);
 
     // Get the HubSpot API path from the request
     const requestedPath = event.headers['x-requested-path'] || event.headers['X-Requested-Path'];
     const hubspotRegion = event.headers['x-hubspot-region'] || event.headers['X-HubSpot-Region'] || 'https://api.hubapi.com';
     
-    console.log('📊 Request Details:', {
+    console.log('[REQUEST] Request Details:', {
       requestedPath,
       hubspotRegion,
       method: event.httpMethod,
@@ -142,7 +142,7 @@ exports.handler = async (event, context) => {
     });
     
     if (!requestedPath) {
-      console.error('❌ Missing requested path');
+      console.error('[ERROR] Missing requested path');
       return {
         statusCode: 400,
         headers,
@@ -156,7 +156,7 @@ exports.handler = async (event, context) => {
     // Construct the full HubSpot API URL
     const hubspotUrl = `${hubspotRegion}${requestedPath}`;
     
-    console.log(`🌐 Proxying ${event.httpMethod} request to: ${hubspotUrl}`);
+    console.log(`[PROXY] Proxying ${event.httpMethod} request to: ${hubspotUrl}`);
 
     // Prepare request options
     const requestOptions = {
@@ -169,15 +169,15 @@ exports.handler = async (event, context) => {
 
     // Add body for POST/PATCH/PUT requests
     if (event.body && ['POST', 'PATCH', 'PUT'].includes(event.httpMethod)) {
-      console.log('📦 Request body:', event.body.substring(0, 200));
+      console.log('[REQUEST] Request body:', event.body.substring(0, 200));
       requestOptions.body = event.body;
     }
 
-    console.log('📤 Making request to HubSpot...');
+    console.log('[REQUEST] Making request to HubSpot...');
     // Make the request to HubSpot
     let response = await fetch(hubspotUrl, requestOptions);
     
-    console.log('📥 HubSpot response:', {
+    console.log('[RESPONSE] HubSpot response:', {
       status: response.status,
       statusText: response.statusText,
       ok: response.ok
@@ -185,7 +185,7 @@ exports.handler = async (event, context) => {
 
     // If 401, try to refresh the token and retry once
     if (response.status === 401) {
-      console.log('🔄 Received 401, attempting to refresh token...');
+      console.log('[REFRESH] Received 401, attempting to refresh token...');
       try {
         // Get current tokens to retrieve refresh token
         const tokens = await getTokens();
@@ -194,12 +194,12 @@ exports.handler = async (event, context) => {
           accessToken = newTokens.accessToken;
           requestOptions.headers.Authorization = `Bearer ${accessToken}`;
           response = await fetch(hubspotUrl, requestOptions);
-          console.log('📥 Retry response after refresh:', response.status);
+          console.log('[RESPONSE] Retry response after refresh:', response.status);
         } else {
-          console.error('❌ No refresh token available for retry');
+          console.error('[ERROR] No refresh token available for retry');
         }
       } catch (refreshError) {
-        console.error('❌ Token refresh failed:', refreshError.message);
+        console.error('[ERROR] Token refresh failed:', refreshError.message);
       }
     }
 
@@ -207,17 +207,17 @@ exports.handler = async (event, context) => {
     const contentType = response.headers.get('content-type');
     let responseBody;
     
-    console.log('📄 Response content-type:', contentType);
+    console.log('[RESPONSE] Response content-type:', contentType);
     
     if (contentType && contentType.includes('application/json')) {
       responseBody = await response.json();
-      console.log('✓ Parsed JSON response');
+      console.log('[OK] Parsed JSON response');
     } else {
       responseBody = await response.text();
-      console.log('✓ Got text response');
+      console.log('[OK] Got text response');
     }
 
-    console.log('✅ Returning proxied response, status:', response.status);
+    console.log('[OK] Returning proxied response, status:', response.status);
 
     // Return the response
     return {
@@ -227,7 +227,7 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('❌ Error in HubSpot proxy:', error);
+    console.error('[ERROR] Error in HubSpot proxy:', error);
     console.error('   Error stack:', error.stack);
     return {
       statusCode: 500,
