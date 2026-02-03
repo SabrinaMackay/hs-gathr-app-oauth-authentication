@@ -146,48 +146,7 @@ exports.handler = async (event, context) => {
             margin: 20px 0;
             text-align: center;
           }
-          .checkmark {
-            font-size: 48px;
-            margin-bottom: 10px;
-          }
-          .warning {
-            background: #fef3c7;
-            border: 2px solid #f59e0b;
-            padding: 20px;
-            border-radius: 8px;
-            margin: 20px 0;
-          }
-          .token-box {
-            background: #f3f4f6;
-            border: 1px solid #d1d5db;
-            padding: 15px;
-            border-radius: 4px;
-            margin: 10px 0;
-            font-family: monospace;
-            font-size: 12px;
-            word-break: break-all;
-            text-align: left;
-          }
-          .copy-btn {
-            background: #3b82f6;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 4px;
-            cursor: pointer;
-            margin-top: 5px;
-          }
-          .copy-btn:hover {
-            background: #2563eb;
-          }
-          h3 {
-            margin-top: 20px;
-            color: #1f2937;
-          }
-          ol {
-            text-align: left;
-            line-height: 1.8;
-          }
+
         </style>
       </head>
       <body>
@@ -198,52 +157,6 @@ exports.handler = async (event, context) => {
           <p>[OK] Tokens are cached for 10 minutes for immediate testing</p>
         </div>
         
-        <div class="warning">
-          <h3>[SETUP] Required: Add Tokens to Netlify Environment Variables</h3>
-          <p><strong>For persistent storage, add these tokens to your Netlify environment variables:</strong></p>
-          
-          <div>
-            <strong>HUBSPOT_ACCESS_TOKEN</strong>
-            <div class="token-box" id="access-token">${tokens.access_token}</div>
-            <button class="copy-btn" onclick="copyToken('access-token')">Copy Access Token</button>
-          </div>
-          
-          <div>
-            <strong>HUBSPOT_REFRESH_TOKEN</strong>
-            <div class="token-box" id="refresh-token">${tokens.refresh_token}</div>
-            <button class="copy-btn" onclick="copyToken('refresh-token')">Copy Refresh Token</button>
-          </div>
-
-          <h3>[STEPS] Steps to Complete Setup:</h3>
-          <ol>
-            <li>Go to your <a href="https://app.netlify.com" target="_blank">Netlify Dashboard</a></li>
-            <li>Select your site: <strong>hs-gathr-oauth</strong></li>
-            <li>Go to <strong>Site settings</strong> → <strong>Environment variables</strong></li>
-            <li>Click <strong>Add a variable</strong></li>
-            <li>Add <code>HUBSPOT_ACCESS_TOKEN</code> with the value above</li>
-            <li>Add <code>HUBSPOT_REFRESH_TOKEN</code> with the value above</li>
-            <li>Save and redeploy your site</li>
-          </ol>
-        </div>
-
-        <p style="text-align: center; margin-top: 30px; color: #6b7280;">
-          Once you've added the environment variables, your HubSpot card will work automatically.
-        </p>
-
-        <script>
-          function copyToken(elementId) {
-            const element = document.getElementById(elementId);
-            const text = element.textContent;
-            navigator.clipboard.writeText(text).then(() => {
-              const btn = event.target;
-              const originalText = btn.textContent;
-              btn.textContent = 'Copied!';
-              setTimeout(() => {
-                btn.textContent = originalText;
-              }, 2000);
-            });
-          }
-        </script>
       </body>
       </html>
     `
