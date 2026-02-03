@@ -104,7 +104,17 @@ exports.handler = async (event, context) => {
     };
   }
 
-  // Return HTML that sends the token back to the HubSpot card via postMessage
+  // Store the tokens in the proxy module for use in API calls
+  const { setAccessToken } = require('./hubspot-proxy');
+  setAccessToken({
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresAt: Date.now() + (tokens.expires_in * 1000)
+  });
+  
+  console.log('       > Tokens stored in proxy module');
+
+  // Return success page - tokens are now stored on the backend
   return {
     statusCode: 200,
     headers: {
@@ -127,63 +137,39 @@ exports.handler = async (event, context) => {
           .success {
             color: #16a34a;
             background: #dcfce7;
-            padding: 20px;
+            padding: 30px;
             border-radius: 8px;
             margin: 20px 0;
           }
-          .spinner {
-            border: 3px solid #f3f3f3;
-            border-top: 3px solid #3498db;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 20px auto;
+          .checkmark {
+            font-size: 48px;
+            margin-bottom: 10px;
           }
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+          .info {
+            background: #eff6ff;
+            border: 1px solid #3b82f6;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 14px;
           }
         </style>
       </head>
       <body>
         <div class="success">
-          <h2>✓ Authentication Successful!</h2>
-          <p>Sending token to HubSpot card...</p>
-          <div class="spinner"></div>
+          <div class="checkmark">✓</div>
+          <h2>Authentication Successful!</h2>
+          <p>Your HubSpot account has been connected.</p>
         </div>
-        <p id="status">Connecting...</p>
-        
+        <div class="info">
+          <p><strong>You can now close this window and return to your HubSpot card.</strong></p>
+          <p>Your OAuth tokens have been securely stored and will be used automatically for API requests.</p>
+        </div>
         <script>
-          console.log('OAuth callback page loaded');
-          console.log('Window opener exists:', !!window.opener);
-          
-          const accessToken = ${JSON.stringify(tokens.access_token)};
-          const refreshToken = ${JSON.stringify(tokens.refresh_token)};
-          
-          if (window.opener) {
-            console.log('Sending token to parent window...');
-            
-            // Send token to the HubSpot card
-            window.opener.postMessage({
-              type: 'OAUTH_SUCCESS',
-              accessToken: accessToken,
-              refreshToken: refreshToken,
-              expiresIn: ${tokens.expires_in}
-            }, '*'); // In production, replace '*' with specific origin
-            
-            document.getElementById('status').textContent = 'Token sent! Closing window...';
-            
-            // Close the popup after a short delay
-            setTimeout(() => {
-              console.log('Closing popup window');
-              window.close();
-            }, 1500);
-          } else {
-            console.error('No opener window found');
-            document.getElementById('status').innerHTML = 
-              '<span style="color: #dc2626;">Error: Unable to communicate with parent window. Please close this window and try again.</span>';
-          }
+          // Try to close the window after a delay
+          setTimeout(() => {
+            window.close();
+          }, 3000);
         </script>
       </body>
       </html>
