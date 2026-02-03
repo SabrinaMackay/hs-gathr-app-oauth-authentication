@@ -1,12 +1,14 @@
-// HubSpot API Proxy - Uses stored OAuth token to make HubSpot API calls
-const fetch = require('node-fetch');
-const { getTokens, saveTokens, needsRefresh } = require('./token-store');
+// Fetch HubSpot File Metadata
+// This endpoint fetches file metadata from HubSpot Files API
+// Uses stored OAuth token from the proxy
 
-// Function to get the current access token (with auto-refresh)
+const fetch = require('node-fetch');
+const { getTokens, needsRefresh, saveTokens } = require('./token-store');
+
+// Get the current access token (with auto-refresh)
 const getAccessToken = async () => {
   console.log('[AUTH] Getting access token...');
 
-  // Try to get from persistent storage first
   try {
     const tokens = await getTokens();
 
@@ -26,7 +28,7 @@ const getAccessToken = async () => {
     console.log('   [WARN] Error accessing token storage:', error.message);
   }
 
-  // Fallback to environment variables (for backward compatibility)
+  // Fallback to environment variables
   if (process.env.HUBSPOT_ACCESS_TOKEN) {
     console.log('   [OK] Falling back to environment variable');
     return process.env.HUBSPOT_ACCESS_TOKEN;
@@ -36,14 +38,13 @@ const getAccessToken = async () => {
   return null;
 };
 
-// Refresh token and save to persistent storage
+// Refresh token helper
 const refreshAccessToken = async (refreshToken) => {
   console.log('[REFRESH] Refreshing access token...');
 
   const CLIENT_ID = process.env.CLIENT_ID;
   const CLIENT_SECRET = process.env.CLIENT_SECRET;
 
-  // Use provided refresh token or fall back to env var
   const tokenToUse = refreshToken || process.env.HUBSPOT_REFRESH_TOKEN;
 
   if (!tokenToUse) {
@@ -74,7 +75,6 @@ const refreshAccessToken = async (refreshToken) => {
 
   console.log('[OK] Token refreshed successfully');
 
-  // Save new tokens to persistent storage
   const newTokenData = {
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token || tokenToUse,
@@ -92,15 +92,13 @@ const refreshAccessToken = async (refreshToken) => {
 };
 
 exports.handler = async (event, context) => {
-  console.log('[PROXY] HubSpot Proxy Function Invoked');
-  console.log('   Method:', event.httpMethod);
-  console.log('   Headers:', JSON.stringify(event.headers, null, 2));
+  console.log('[GET FILE] Get File Metadata Function Invoked');
 
   // Enable CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, X-HubSpot-Region, X-Requested-Path',
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
     'Content-Type': 'application/json'
   };
 
@@ -110,9 +108,37 @@ exports.handler = async (event, context) => {
     return { statusCode: 200, headers, body: '' };
   }
 
+  // Only accept POST requests
+  if (event.httpMethod !== 'POST') {
+    return {
+      statusCode: 405,
+      headers,
+      body: JSON.stringify({ error: 'Method not allowed. Use POST.' })
+    };
+  }
+
   try {
-    // Get access token (now async with auto-refresh)
-    console.log('[AUTH] Attempting to get access token...');
+    // Parse request body
+    const body = JSON.parse(event.body);
+    const { fileId, hubspotRegion } = body;
+
+    console.log('[REQUEST] Get file metadata request:', {
+      fileId,
+      hubspotRegion
+    });
+
+    // Validate required fields
+    if (!fileId) {
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'Missing required field: fileId is required'
+        })
+      };
+    }
+
+    // Get access token
     let accessToken = await getAccessToken();
 
     if (!accessToken) {
@@ -122,81 +148,61 @@ exports.handler = async (event, context) => {
         headers,
         body: JSON.stringify({
           error: 'No access token available. Please authenticate first.',
-          needsAuth: true,
-          hint: 'Complete OAuth flow at /oauth-start or set HUBSPOT_ACCESS_TOKEN environment variable'
+          needsAuth: true
         })
       };
     }
 
-    console.log('[OK] Access token found, length:', accessToken.length);
+    console.log('[OK] Access token found');
 
-    // Get the HubSpot API path from the request
-    const requestedPath = event.headers['x-requested-path'] || event.headers['X-Requested-Path'];
-    const hubspotRegion = event.headers['x-hubspot-region'] || event.headers['X-HubSpot-Region'] || 'https://api.hubapi.com';
+    // Construct HubSpot Files API URL
+    const region = hubspotRegion || 'https://api-eu1.hubapi.com';
+    const hubspotUrl = `${region}/files/v3/files/${fileId}`;
 
-    console.log('[REQUEST] Request Details:', {
-      requestedPath,
-      hubspotRegion,
-      method: event.httpMethod,
-      hasBody: !!event.body
+    console.log('[HUBSPOT] Fetching file metadata:', {
+      url: hubspotUrl,
+      fileId
     });
 
-    if (!requestedPath) {
-      console.error('[ERROR] Missing requested path');
-      return {
-        statusCode: 400,
-        headers,
-        body: JSON.stringify({
-          error: 'Missing x-requested-path header',
-          receivedHeaders: Object.keys(event.headers)
-        })
-      };
-    }
+    const requestStart = Date.now();
 
-    // Construct the full HubSpot API URL
-    const hubspotUrl = `${hubspotRegion}${requestedPath}`;
-
-    console.log(`[PROXY] Proxying ${event.httpMethod} request to: ${hubspotUrl}`);
-
-    // Prepare request options
-    const requestOptions = {
-      method: event.httpMethod,
+    // Make the request to HubSpot
+    let response = await fetch(hubspotUrl, {
+      method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
         'Content-Type': 'application/json'
       }
-    };
-
-    // Add body for POST/PATCH/PUT requests
-    if (event.body && ['POST', 'PATCH', 'PUT'].includes(event.httpMethod)) {
-      console.log('[REQUEST] Request body:', event.body.substring(0, 200));
-      requestOptions.body = event.body;
-    }
-
-    console.log('[REQUEST] Making request to HubSpot...');
-    // Make the request to HubSpot
-    let response = await fetch(hubspotUrl, requestOptions);
-
-    console.log('[RESPONSE] HubSpot response:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
     });
 
-    // If 401, try to refresh the token and retry once
+    const requestDuration = Date.now() - requestStart;
+
+    console.log('[HUBSPOT] Response received:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+      duration: requestDuration
+    });
+
+    // If 401, try to refresh token and retry once
     if (response.status === 401) {
       console.log('[REFRESH] Received 401, attempting to refresh token...');
       try {
-        // Get current tokens to retrieve refresh token
         const tokens = await getTokens();
         if (tokens && tokens.refreshToken) {
           const newTokens = await refreshAccessToken(tokens.refreshToken);
           accessToken = newTokens.accessToken;
-          requestOptions.headers.Authorization = `Bearer ${accessToken}`;
-          response = await fetch(hubspotUrl, requestOptions);
-          console.log('[RESPONSE] Retry response after refresh:', response.status);
-        } else {
-          console.error('[ERROR] No refresh token available for retry');
+          
+          // Retry request with new token
+          response = await fetch(hubspotUrl, {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          });
+          
+          console.log('[HUBSPOT] Retry response after refresh:', response.status);
         }
       } catch (refreshError) {
         console.error('[ERROR] Token refresh failed:', refreshError.message);
@@ -207,28 +213,58 @@ exports.handler = async (event, context) => {
     const contentType = response.headers.get('content-type');
     let responseBody;
 
-    console.log('[RESPONSE] Response content-type:', contentType);
-
     if (contentType && contentType.includes('application/json')) {
       responseBody = await response.json();
-      console.log('[OK] Parsed JSON response');
     } else {
       responseBody = await response.text();
-      console.log('[OK] Got text response');
     }
 
-    console.log('[OK] Returning proxied response, status:', response.status);
+    // Handle error responses
+    if (!response.ok) {
+      console.error('[ERROR] Failed to fetch file metadata:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseBody
+      });
 
-    // Return the response
+      return {
+        statusCode: response.status,
+        headers,
+        body: JSON.stringify({
+          error: 'Failed to fetch file metadata',
+          status: response.status,
+          message: responseBody.message || response.statusText,
+          details: responseBody
+        })
+      };
+    }
+
+    // Success!
+    console.log('[OK] File metadata fetched successfully:', {
+      fileId,
+      fileName: responseBody.name,
+      fileUrl: responseBody.url,
+      fileSize: responseBody.size,
+      fileType: responseBody.type,
+      fileExtension: responseBody.extension,
+      duration: requestDuration
+    });
+
     return {
-      statusCode: response.status,
+      statusCode: 200,
       headers,
-      body: typeof responseBody === 'string' ? responseBody : JSON.stringify(responseBody)
+      body: JSON.stringify({
+        success: true,
+        fileId,
+        metadata: responseBody,
+        duration: requestDuration
+      })
     };
 
   } catch (error) {
-    console.error('[ERROR] Error in HubSpot proxy:', error);
+    console.error('[ERROR] Error fetching file metadata:', error);
     console.error('   Error stack:', error.stack);
+    
     return {
       statusCode: 500,
       headers,

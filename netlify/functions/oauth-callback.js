@@ -109,10 +109,10 @@ exports.handler = async (event, context) => {
   console.log('       Access Token (first 10 chars):', tokens.access_token.substring(0, 10) + '...');
   console.log('       Refresh Token (first 10 chars):', tokens.refresh_token.substring(0, 10) + '...');
   console.log('       Expires in:', tokens.expires_in, 'seconds');
-  
+
   const { saveTokens } = require('./token-store');
   await saveTokens(tokens);
-  
+
   console.log('');
   console.log('[SETUP] For persistent storage, copy these tokens to Netlify environment variables:');
   console.log('   HUBSPOT_ACCESS_TOKEN=' + tokens.access_token);
