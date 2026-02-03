@@ -29,7 +29,7 @@
 
         .install-btn {
             display: inline-block;
-            background: #ff7a59;
+            background: #2660dc;
             color: white;
             padding: 15px 30px;
             text-decoration: none;
@@ -40,7 +40,7 @@
         }
 
         .install-btn:hover {
-            background: #ff5a39;
+            background: #2660dc;
         }
 
         .token-info {
@@ -79,7 +79,7 @@
 
         .logout-btn {
             display: inline-block;
-            background: #ef4444;
+            background: #2660dc;
             color: white;
             padding: 10px 20px;
             text-decoration: none;
@@ -91,14 +91,14 @@
         }
 
         .logout-btn:hover {
-            background: #dc2626;
+            background: #2660dc;
         }
     </style>
 </head>
 
 <body>
     <div class="container">
-        <h2>🚀 HubSpot OAuth 2.0 Token Exchange Server</h2>
+        <h2>HubSpot OAuth 2.0 Token Exchange Server</h2>
 
         <div id="content">
             <p>Loading...</p>
@@ -142,7 +142,7 @@
 
                 if (remaining > 0) {
                     contentDiv.innerHTML = `
-                        <p class="success">✅ Successfully authorized with HubSpot!</p>
+                        <p class="success">Successfully authorized with HubSpot!</p>
                         
                         <div class="token-info">
                             <div class="token-label">Access Token:</div>
@@ -160,7 +160,7 @@
                     `;
                 } else {
                     contentDiv.innerHTML = `
-                        <p>⚠️ Your access token has expired.</p>
+                        <p>Your access token has expired.</p>
                         <p>In a production app, you would use the refresh token to get a new access token.</p>
                         <a href="/install" class="install-btn">Re-authorize with HubSpot</a>
                     `;

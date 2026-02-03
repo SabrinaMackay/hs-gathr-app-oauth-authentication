@@ -2,8 +2,18 @@
 
 exports.handler = async (event, context) => {
   const CLIENT_ID = process.env.CLIENT_ID;
-  const SCOPES = process.env.SCOPE || 'crm.objects.contacts.read';
   const REDIRECT_URI = process.env.REDIRECT_URI || `${process.env.URL}/oauth-callback`;
+
+  // Handle SCOPE environment variable - normalize to space-separated string
+  // Supports: space-separated, comma-separated, or mixed formats
+  let SCOPES = process.env.SCOPE || 'crm.objects.contacts.read';
+
+  // Remove invalid scopes and normalize to space-separated format
+  SCOPES = SCOPES
+    .split(/[\s,]+/)           // Split on spaces, commas, or combination
+    .map(s => s.trim())        // Trim whitespace
+    .filter(s => s.length > 0) // Remove empty strings
+    .join(' ');                // Join with spaces
 
   if (!CLIENT_ID) {
     return {
@@ -14,6 +24,7 @@ exports.handler = async (event, context) => {
 
   console.log('=== Initiating OAuth 2.0 flow with HubSpot ===');
   console.log("===> Step 1: Redirecting user to HubSpot's OAuth URL");
+  console.log(`Scopes: ${SCOPES}`);
 
   const authUrl =
     'https://app.hubspot.com/oauth/authorize' +

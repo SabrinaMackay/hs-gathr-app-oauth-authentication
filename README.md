@@ -63,9 +63,26 @@ The OAuth 2.0 flow consists of four basic steps:
 4. **Add Environment Variables**
    - Go to **Site settings** → **Environment variables**
    - Add the following variables:
-     - `CLIENT_ID`: Your HubSpot app client ID
-     - `CLIENT_SECRET`: Your HubSpot app client secret
-     - `SCOPE`: Space-separated scopes (e.g., `crm.objects.contacts.read`)
+   
+   | Variable | Value |
+   |----------|-------|
+   | `CLIENT_ID` | Your HubSpot app client ID |
+   | `CLIENT_SECRET` | Your HubSpot app client secret |
+   | `SCOPE` | See below ⬇️ |
+   
+   **For the SCOPE variable, enter as a SINGLE STRING** (space or comma separated):
+   ```
+   crm.objects.contacts.read crm.objects.contacts.write crm.objects.custom.read crm.objects.custom.write files.ui_hidden.read
+   ```
+   
+   Or with commas:
+   ```
+   crm.objects.contacts.read,crm.objects.contacts.write,crm.objects.custom.read,crm.objects.custom.write,files.ui_hidden.read
+   ```
+   
+   **⚠️ INVALID Scopes (automatically filtered out):**
+   - ❌ `oauth` - This is not a valid scope
+   - ❌ `files` - Use specific scopes like `files.read` or `files.ui_hidden.read`
 
 5. **Deploy**
    - Click **"Deploy site"**
@@ -98,7 +115,7 @@ The OAuth 2.0 flow consists of four basic steps:
    ```bash
    netlify env:set CLIENT_ID "your-hubspot-client-id"
    netlify env:set CLIENT_SECRET "your-hubspot-client-secret"
-   netlify env:set SCOPE "crm.objects.contacts.read"
+   netlify env:set SCOPE "crm.objects.contacts.read crm.objects.contacts.write crm.objects.custom.read crm.objects.custom.write files.ui_hidden.read"
    ```
 
 5. **Deploy**
@@ -207,6 +224,20 @@ MIT License - feel free to use this for your own projects!
 - Make sure you've set environment variables in Netlify
 - Redeploy your site after adding environment variables
 
+### "Authorization failed because one or more scopes are invalid"
+This error means you're using invalid OAuth scopes. Common issues:
+- ❌ Remove `oauth` from your scopes - it's not a valid HubSpot scope
+- ❌ Remove `files` - use specific scopes like `files.read`, `files.write`, or `files.ui_hidden.read`
+- ✅ Use valid scopes like: `crm.objects.contacts.read`, `crm.objects.contacts.write`, `files.ui_hidden.read`
+
+**How to fix:**
+1. Update your **Netlify environment variable** `SCOPE` to:
+   ```
+   crm.objects.contacts.read crm.objects.contacts.write crm.objects.custom.read crm.objects.custom.write files.ui_hidden.read
+   ```
+2. Update your **HubSpot app configuration** to remove `oauth` and `files`
+3. Redeploy your Netlify site
+
 ### "Invalid redirect_uri"
 - Ensure the redirect URI in your HubSpot app matches your Netlify URL exactly
 - Format: `https://your-site-name.netlify.app/oauth-callback`
@@ -220,6 +251,26 @@ MIT License - feel free to use this for your own projects!
 - Install Netlify CLI: `npm install -g netlify-cli`
 - Use `netlify dev` instead of `npm start`
 - Add `http://localhost:8888/oauth-callback` to your HubSpot app's redirect URIs
+
+### How to enter SCOPE in Netlify UI
+
+When adding the `SCOPE` environment variable in Netlify:
+
+1. Go to **Site settings** → **Environment variables** → **Add a variable**
+2. **Key**: `SCOPE`
+3. **Value**: Enter as ONE LINE (don't try to make it a list/array)
+
+**Example (space-separated):**
+```
+crm.objects.contacts.read crm.objects.contacts.write crm.objects.custom.read crm.objects.custom.write files.ui_hidden.read
+```
+
+**Example (comma-separated):**
+```
+crm.objects.contacts.read,crm.objects.contacts.write,crm.objects.custom.read,crm.objects.custom.write,files.ui_hidden.read
+```
+
+Both formats work! The function automatically normalizes them. Invalid scopes like `oauth` and `files` are automatically filtered out.
 
 ## 🎯 Next Steps
 
