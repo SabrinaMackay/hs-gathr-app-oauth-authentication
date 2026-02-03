@@ -44,7 +44,7 @@ exports.handler = async (event, context) => {
 
   // Check if we received an authorization code
   const params = event.queryStringParameters || {};
-  
+
   if (!params.code) {
     return {
       statusCode: 400,
@@ -72,31 +72,121 @@ exports.handler = async (event, context) => {
     return {
       statusCode: 400,
       headers: { 'Content-Type': 'text/html' },
-      body: `<h2>Error: ${tokens.message}</h2><p><a href="/">Go back</a></p>`
+      body: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>OAuth Error</title>
+          <style>
+            body {
+              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+              max-width: 600px;
+              margin: 50px auto;
+              padding: 20px;
+              text-align: center;
+            }
+            .error {
+              color: #dc2626;
+              background: #fee;
+              padding: 20px;
+              border-radius: 8px;
+              margin: 20px 0;
+            }
+          </style>
+        </head>
+        <body>
+          <h2>OAuth Error</h2>
+          <div class="error">${tokens.message}</div>
+          <p>You can close this window and try again.</p>
+        </body>
+        </html>
+      `
     };
   }
 
-  // Create a secure cookie with the tokens
-  // Note: In production, you should store these in a database
-  // For this demo, we'll encode them in a cookie (not recommended for production)
-  const tokenData = Buffer.from(JSON.stringify({
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token,
-    expires_in: tokens.expires_in,
-    timestamp: Date.now()
-  })).toString('base64');
-
-  // Calculate expiry time (7 days from now)
-  const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + 7);
-
+  // Return HTML that sends the token back to the HubSpot card via postMessage
   return {
-    statusCode: 302,
+    statusCode: 200,
     headers: {
-      Location: '/',
-      'Set-Cookie': `hubspot_tokens=${tokenData}; Path=/; HttpOnly; Secure; SameSite=Strict; Expires=${expiryDate.toUTCString()}`,
+      'Content-Type': 'text/html',
       'Cache-Control': 'no-cache'
     },
-    body: ''
+    body: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>OAuth Success</title>
+        <style>
+          body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 50px auto;
+            padding: 20px;
+            text-align: center;
+          }
+          .success {
+            color: #16a34a;
+            background: #dcfce7;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+          }
+          .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #3498db;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+          }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="success">
+          <h2>✓ Authentication Successful!</h2>
+          <p>Sending token to HubSpot card...</p>
+          <div class="spinner"></div>
+        </div>
+        <p id="status">Connecting...</p>
+        
+        <script>
+          console.log('OAuth callback page loaded');
+          console.log('Window opener exists:', !!window.opener);
+          
+          const accessToken = ${JSON.stringify(tokens.access_token)};
+          const refreshToken = ${JSON.stringify(tokens.refresh_token)};
+          
+          if (window.opener) {
+            console.log('Sending token to parent window...');
+            
+            // Send token to the HubSpot card
+            window.opener.postMessage({
+              type: 'OAUTH_SUCCESS',
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+              expiresIn: ${tokens.expires_in}
+            }, '*'); // In production, replace '*' with specific origin
+            
+            document.getElementById('status').textContent = 'Token sent! Closing window...';
+            
+            // Close the popup after a short delay
+            setTimeout(() => {
+              console.log('Closing popup window');
+              window.close();
+            }, 1500);
+          } else {
+            console.error('No opener window found');
+            document.getElementById('status').innerHTML = 
+              '<span style="color: #dc2626;">Error: Unable to communicate with parent window. Please close this window and try again.</span>';
+          }
+        </script>
+      </body>
+      </html>
+    `
   };
 };
