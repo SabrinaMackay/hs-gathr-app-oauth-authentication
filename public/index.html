@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HubSpot OAuth 2.0 App</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+        h2 {
+            color: #333;
+            margin-top: 0;
+        }
+        .install-btn {
+            display: inline-block;
+            background: #ff7a59;
+            color: white;
+            padding: 15px 30px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: background 0.3s;
+            margin-top: 20px;
+        }
+        .install-btn:hover {
+            background: #ff5a39;
+        }
+        .token-info {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 5px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+        }
+        .token-label {
+            font-weight: bold;
+            color: #555;
+            margin-bottom: 5px;
+        }
+        .token-value {
+            font-family: 'Courier New', monospace;
+            word-break: break-all;
+            background: white;
+            padding: 10px;
+            border-radius: 3px;
+            margin-bottom: 15px;
+        }
+        .success {
+            color: #22c55e;
+            font-weight: bold;
+        }
+        .expires-info {
+            color: #666;
+            font-size: 14px;
+            font-style: italic;
+        }
+        .logout-btn {
+            display: inline-block;
+            background: #ef4444;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-top: 10px;
+            cursor: pointer;
+            border: none;
+        }
+        .logout-btn:hover {
+            background: #dc2626;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>🚀 HubSpot OAuth 2.0 Token Exchange Server</h2>
+        
+        <div id="content">
+            <p>Loading...</p>
+        </div>
+    </div>
+
+    <script>
+        // Function to parse cookies
+        function getCookie(name) {
+            const value = `; ${document.cookie}`;
+            const parts = value.split(`; ${name}=`);
+            if (parts.length === 2) return parts.pop().split(';').shift();
+            return null;
+        }
+
+        // Function to delete cookie
+        function deleteCookie(name) {
+            document.cookie = name + '=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+        }
+
+        // Function to format time remaining
+        function formatTimeRemaining(expiresIn) {
+            const hours = Math.floor(expiresIn / 3600);
+            const minutes = Math.floor((expiresIn % 3600) / 60);
+            if (hours > 0) {
+                return `${hours} hour${hours > 1 ? 's' : ''} ${minutes} minute${minutes !== 1 ? 's' : ''}`;
+            }
+            return `${minutes} minute${minutes !== 1 ? 's' : ''}`;
+        }
+
+        // Check if user is authorized
+        const tokenCookie = getCookie('hubspot_tokens');
+        const contentDiv = document.getElementById('content');
+
+        if (tokenCookie) {
+            try {
+                const tokenData = JSON.parse(atob(tokenCookie));
+                const now = Date.now();
+                const elapsed = Math.floor((now - tokenData.timestamp) / 1000);
+                const remaining = tokenData.expires_in - elapsed;
+
+                if (remaining > 0) {
+                    contentDiv.innerHTML = `
+                        <p class="success">✅ Successfully authorized with HubSpot!</p>
+                        
+                        <div class="token-info">
+                            <div class="token-label">Access Token:</div>
+                            <div class="token-value">${tokenData.access_token}</div>
+                            
+                            <div class="token-label">Refresh Token:</div>
+                            <div class="token-value">${tokenData.refresh_token}</div>
+                            
+                            <div class="expires-info">
+                                Token expires in: ${formatTimeRemaining(remaining)}
+                            </div>
+                        </div>
+
+                        <button class="logout-btn" onclick="logout()">Logout / Clear Tokens</button>
+                    `;
+                } else {
+                    contentDiv.innerHTML = `
+                        <p>⚠️ Your access token has expired.</p>
+                        <p>In a production app, you would use the refresh token to get a new access token.</p>
+                        <a href="/install" class="install-btn">Re-authorize with HubSpot</a>
+                    `;
+                }
+            } catch (e) {
+                console.error('Error parsing token data:', e);
+                deleteCookie('hubspot_tokens');
+                location.reload();
+            }
+        } else {
+            contentDiv.innerHTML = `
+                <p>Welcome! This app demonstrates the HubSpot OAuth 2.0 Authorization Code flow.</p>
+                <p>Click the button below to authorize this app with your HubSpot account.</p>
+                <a href="/install" class="install-btn">Install / Authorize App</a>
+                
+                <div style="margin-top: 30px; padding: 20px; background: #f0f9ff; border-radius: 5px;">
+                    <h3 style="margin-top: 0;">How it works:</h3>
+                    <ol>
+                        <li>Your app opens a browser window to send you to the HubSpot OAuth 2.0 server</li>
+                        <li>You review the requested permissions and grant the app access</li>
+                        <li>You are redirected back to the app with an authorization code</li>
+                        <li>The app exchanges the authorization code for an access token</li>
+                    </ol>
+                </div>
+            `;
+        }
+
+        function logout() {
+            deleteCookie('hubspot_tokens');
+            location.reload();
+        }
+    </script>
+</body>
+</html>

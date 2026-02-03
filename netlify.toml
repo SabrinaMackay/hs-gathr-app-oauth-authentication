@@ -1,0 +1,38 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+[dev]
+  command = "echo 'Dev server ready'"
+  port = 3000
+  publish = "public"
+  functions = "netlify/functions"
+
+[[redirects]]
+  from = "/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = false
+  conditions = {Role = ["admin"]}
+
+# Redirect root to index.html
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200
+
+# API routes to functions
+[[redirects]]
+  from = "/install"
+  to = "/.netlify/functions/install"
+  status = 200
+
+[[redirects]]
+  from = "/oauth-callback"
+  to = "/.netlify/functions/oauth-callback"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
