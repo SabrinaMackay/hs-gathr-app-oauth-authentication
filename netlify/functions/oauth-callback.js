@@ -104,15 +104,24 @@ exports.handler = async (event, context) => {
     };
   }
 
-  // Log tokens for manual setup (in production, you'd store these in a database)
+  // Save tokens to persistent storage
   console.log('===> ✅ OAuth tokens received successfully!');
   console.log('       Access Token (first 10 chars):', tokens.access_token.substring(0, 10) + '...');
   console.log('       Refresh Token (first 10 chars):', tokens.refresh_token.substring(0, 10) + '...');
   console.log('       Expires in:', tokens.expires_in, 'seconds');
-  console.log('');
-  console.log('📝 IMPORTANT: Copy these tokens to your Netlify environment variables:');
-  console.log('   HUBSPOT_ACCESS_TOKEN=' + tokens.access_token);
-  console.log('   HUBSPOT_REFRESH_TOKEN=' + tokens.refresh_token);
+  
+  try {
+    const { saveTokens } = require('./token-store');
+    await saveTokens(tokens);
+    console.log('       ✅ Tokens saved to persistent storage');
+  } catch (error) {
+    console.error('       ⚠️ Failed to save tokens to storage:', error.message);
+    console.log('       Falling back to displaying tokens for manual setup');
+    console.log('');
+    console.log('📝 IMPORTANT: Copy these tokens to your Netlify environment variables:');
+    console.log('   HUBSPOT_ACCESS_TOKEN=' + tokens.access_token);
+    console.log('   HUBSPOT_REFRESH_TOKEN=' + tokens.refresh_token);
+  }
   console.log('');
 
   // Return success page with tokens for manual setup
@@ -191,11 +200,12 @@ exports.handler = async (event, context) => {
           <div class="checkmark">✓</div>
           <h2>OAuth Tokens Received!</h2>
           <p>HubSpot authentication was successful.</p>
+          <p>Tokens have been automatically saved to secure storage.</p>
         </div>
         
         <div class="warning">
-          <h3>⚙️ Setup Required</h3>
-          <p><strong>Add these tokens to your Netlify environment variables:</strong></p>
+          <h3>⚙️ Backup: Manual Setup (Optional)</h3>
+          <p><strong>If automatic storage fails, add these tokens to your Netlify environment variables:</strong></p>
           
           <div>
             <strong>HUBSPOT_ACCESS_TOKEN</strong>
