@@ -1,22 +1,18 @@
 // HubSpot API Proxy - Uses stored OAuth token to make HubSpot API calls
 const fetch = require('node-fetch');
 
-// Simple in-memory token storage (for demo - use a database for production)
-let storedToken = null;
-
-// Function to get the current access token (from environment or stored)
+// Function to get the current access token from environment variables
 const getAccessToken = () => {
-  // First, check if there's a token in environment variables (for single-user setup)
+  console.log('🔑 Getting access token from environment');
+  console.log('   HUBSPOT_ACCESS_TOKEN exists:', !!process.env.HUBSPOT_ACCESS_TOKEN);
+  
   if (process.env.HUBSPOT_ACCESS_TOKEN) {
+    console.log('   ✓ Found access token in environment');
     return process.env.HUBSPOT_ACCESS_TOKEN;
   }
-  // Otherwise, use the stored token (set during OAuth callback)
-  return storedToken;
-};
-
-// Function to set the access token (called by oauth-callback)
-const setAccessToken = (token) => {
-  storedToken = token;
+  
+  console.log('   ✗ No access token found');
+  return null;
 };
 
 // Refresh token if needed
@@ -56,6 +52,10 @@ const refreshAccessToken = async () => {
 };
 
 exports.handler = async (event, context) => {
+  console.log('🚀 HubSpot Proxy Function Invoked');
+  console.log('   Method:', event.httpMethod);
+  console.log('   Headers:', JSON.stringify(event.headers, null, 2));
+  
   // Enable CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -66,40 +66,57 @@ exports.handler = async (event, context) => {
 
   // Handle preflight requests
   if (event.httpMethod === 'OPTIONS') {
+    console.log('   Handling OPTIONS preflight request');
     return { statusCode: 200, headers, body: '' };
   }
 
   try {
     // Get access token
+    console.log('🔐 Attempting to get access token...');
     let accessToken = getAccessToken();
     
     if (!accessToken) {
+      console.error('❌ No access token available');
       return {
         statusCode: 401,
         headers,
         body: JSON.stringify({ 
           error: 'No access token available. Please authenticate first.',
-          needsAuth: true
+          needsAuth: true,
+          hint: 'Set HUBSPOT_ACCESS_TOKEN environment variable in Netlify'
         })
       };
     }
 
+    console.log('✓ Access token found, length:', accessToken.length);
+
     // Get the HubSpot API path from the request
-    const requestedPath = event.headers['x-requested-path'] || event.queryStringParameters?.path;
-    const hubspotRegion = event.headers['x-hubspot-region'] || 'https://api.hubapi.com';
+    const requestedPath = event.headers['x-requested-path'] || event.headers['X-Requested-Path'];
+    const hubspotRegion = event.headers['x-hubspot-region'] || event.headers['X-HubSpot-Region'] || 'https://api.hubapi.com';
+    
+    console.log('📊 Request Details:', {
+      requestedPath,
+      hubspotRegion,
+      method: event.httpMethod,
+      hasBody: !!event.body
+    });
     
     if (!requestedPath) {
+      console.error('❌ Missing requested path');
       return {
         statusCode: 400,
         headers,
-        body: JSON.stringify({ error: 'Missing x-requested-path header or path parameter' })
+        body: JSON.stringify({ 
+          error: 'Missing x-requested-path header',
+          receivedHeaders: Object.keys(event.headers)
+        })
       };
     }
 
     // Construct the full HubSpot API URL
     const hubspotUrl = `${hubspotRegion}${requestedPath}`;
     
-    console.log(`Proxying ${event.httpMethod} request to: ${hubspotUrl}`);
+    console.log(`🌐 Proxying ${event.httpMethod} request to: ${hubspotUrl}`);
 
     // Prepare request options
     const requestOptions = {
@@ -112,29 +129,44 @@ exports.handler = async (event, context) => {
 
     // Add body for POST/PATCH/PUT requests
     if (event.body && ['POST', 'PATCH', 'PUT'].includes(event.httpMethod)) {
+      console.log('📦 Request body:', event.body.substring(0, 200));
       requestOptions.body = event.body;
     }
 
+    console.log('📤 Making request to HubSpot...');
     // Make the request to HubSpot
     let response = await fetch(hubspotUrl, requestOptions);
+    
+    console.log('📥 HubSpot response:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
 
     // If 401, try to refresh the token and retry once
     if (response.status === 401 && process.env.HUBSPOT_REFRESH_TOKEN) {
-      console.log('Access token expired, refreshing...');
+      console.log('🔄 Access token expired, refreshing...');
       accessToken = await refreshAccessToken();
       requestOptions.headers.Authorization = `Bearer ${accessToken}`;
       response = await fetch(hubspotUrl, requestOptions);
+      console.log('📥 Retry response:', response.status);
     }
 
     // Get response body
     const contentType = response.headers.get('content-type');
     let responseBody;
     
+    console.log('📄 Response content-type:', contentType);
+    
     if (contentType && contentType.includes('application/json')) {
       responseBody = await response.json();
+      console.log('✓ Parsed JSON response');
     } else {
       responseBody = await response.text();
+      console.log('✓ Got text response');
     }
+
+    console.log('✅ Returning proxied response, status:', response.status);
 
     // Return the response
     return {
@@ -144,7 +176,8 @@ exports.handler = async (event, context) => {
     };
 
   } catch (error) {
-    console.error('Error in HubSpot proxy:', error);
+    console.error('❌ Error in HubSpot proxy:', error);
+    console.error('   Error stack:', error.stack);
     return {
       statusCode: 500,
       headers,
@@ -155,7 +188,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-
-// Export functions for use by oauth-callback
-exports.setAccessToken = setAccessToken;
-exports.getAccessToken = getAccessToken;
