@@ -75,17 +75,32 @@ const refreshAccessToken = async (hub_id, refreshToken) => {
     throw new Error(`Failed to refresh token: ${tokens.message || response.statusText}`);
   }
 
-  console.log('[OK] Token refreshed successfully for portal:', hub_id);
+  // CRITICAL: Validate that the refreshed token belongs to the requested portal
+  const actualHubId = tokens.hub_id ? tokens.hub_id.toString() : null;
+  const requestedHubId = hub_id ? hub_id.toString() : null;
+
+  if (actualHubId && requestedHubId && actualHubId !== requestedHubId) {
+    console.error('[ERROR] Token hub_id mismatch!');
+    console.error('   Requested portal:', requestedHubId);
+    console.error('   Token belongs to:', actualHubId);
+    throw new Error(
+      `Token mismatch: Your cached/env tokens belong to portal ${actualHubId}, but you're trying to access portal ${requestedHubId}. ` +
+      `Please complete OAuth installation for portal ${requestedHubId}.`
+    );
+  }
+
+  console.log('[OK] Token refreshed successfully for portal:', actualHubId || hub_id);
 
   const newTokenData = {
+    hub_id: actualHubId || hub_id,
     accessToken: tokens.access_token,
     refreshToken: tokens.refresh_token || tokenToUse,
     expiresAt: Date.now() + (tokens.expires_in * 1000)
   };
 
   try {
-    await saveTokens(hub_id, newTokenData);
-    console.log('   [OK] New tokens saved to storage for portal:', hub_id);
+    await saveTokens(actualHubId || hub_id, newTokenData);
+    console.log('   [OK] New tokens saved to storage for portal:', actualHubId || hub_id);
   } catch (error) {
     console.error('   [WARN] Failed to save refreshed tokens:', error.message);
   }
