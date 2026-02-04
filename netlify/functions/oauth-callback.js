@@ -204,14 +204,13 @@ exports.handler = async (event, context) => {
       </head>
       <body>
         <div class="success">
-          <div class="checkmark">✓</div>
           <h2>Installation Complete!</h2>
           <p>HubSpot authentication was successful for portal <strong>${hub_id}</strong>.</p>
           <p>Tokens are cached in memory for immediate testing</p>
           ${schemaResult ? `
-            <p>✓ Gathr Statements custom object ${schemaResult.created ? 'created' : 'verified'}</p>
+            <p>Gathr Statements custom object ${schemaResult.created ? 'created' : 'verified'}</p>
             <p style="font-size: 0.85em; margin-top: 10px;">Object Type ID: <code>${schemaResult.objectTypeId}</code></p>
-          ` : `<p style="color: #b45309;">⚠ Custom object creation ${schemaError && schemaError.message.includes('scopes') ? 'failed - missing scopes' : 'pending'}</p>`}
+          ` : `<p style="color: #b45309;">Custom object creation ${schemaError && schemaError.message.includes('scopes') ? 'failed - missing scopes' : 'pending'}</p>`}
         </div>
 
         ${schemaResult ? `
@@ -240,7 +239,7 @@ exports.handler = async (event, context) => {
 
         ${schemaError && schemaError.message.includes('scopes') ? `
         <div class="info" style="border-left-color: #dc2626; background: #fef2f2;">
-          <h3 style="color: #b91c1c;">⚠ Schema Creation Failed - Missing Scopes</h3>
+          <h3 style="color: #b91c1c;">Schema Creation Failed - Missing Scopes</h3>
           <p><strong>The app needs additional permissions to create custom objects.</strong></p>
 
           <p style="margin-top: 15px;"><strong>To fix this:</strong></p>

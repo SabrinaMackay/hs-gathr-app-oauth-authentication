@@ -11,7 +11,6 @@ exports.handler = async (event, context) => {
     'crm.objects.companies.read',     // Read companies
     'crm.objects.companies.write',    // Write companies
     'crm.schemas.custom.read',        // Read custom object schemas
-    'crm.schemas.custom.write',       // Create/modify custom objects (REQUIRED for schema creation)
     'crm.objects.custom.read',        // Read custom object records
     'crm.objects.custom.write',       // Write custom object records
     'files'                           // Access files API
