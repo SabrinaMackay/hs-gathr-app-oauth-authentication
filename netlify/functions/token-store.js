@@ -38,8 +38,46 @@ const saveTokens = async (hub_id, tokens) => {
 // Get current tokens from environment variables or cache
 // For multi-tenant apps, hub_id is required to retrieve the correct tokens
 const getTokens = async (hub_id) => {
-  // Check environment variables first (single-tenant dev/test setup only)
-  // In production multi-tenant, you should NOT use env vars - use a database
+  // Multi-tenant: Check cache first for hub-specific tokens
+  if (hub_id) {
+    const tokens = cachedTokens.get(hub_id);
+
+    if (tokens) {
+      console.log('[OK] Tokens loaded from cache for portal:', hub_id);
+      console.log('   Cached:', Math.round((Date.now() - tokens.updatedAt) / 1000), 'seconds ago');
+      return tokens;
+    }
+
+    // Check if environment variables match this hub_id (single-tenant fallback)
+    if (process.env.HUBSPOT_ACCESS_TOKEN && process.env.HUBSPOT_REFRESH_TOKEN) {
+      const envPortalId = process.env.HUBSPOT_PORTAL_ID || 'env-var-portal';
+
+      // Only return env tokens if they match the requested hub_id
+      if (envPortalId === hub_id || envPortalId === 'env-var-portal') {
+        const tokens = {
+          hub_id: envPortalId,
+          accessToken: process.env.HUBSPOT_ACCESS_TOKEN,
+          refreshToken: process.env.HUBSPOT_REFRESH_TOKEN,
+          expiresAt: process.env.HUBSPOT_TOKEN_EXPIRES_AT
+            ? parseInt(process.env.HUBSPOT_TOKEN_EXPIRES_AT)
+            : Date.now() + (6 * 60 * 60 * 1000), // Default: 6 hours from now
+          updatedAt: Date.now()
+        };
+
+        console.log('[OK] Tokens loaded from environment variables for portal:', hub_id);
+        console.log('   Env Portal ID:', tokens.hub_id);
+        console.log('   Expires at:', new Date(tokens.expiresAt).toISOString());
+        return tokens;
+      }
+    }
+
+    console.log('[ERROR] No tokens found for portal:', hub_id);
+    console.log('   Available portals in cache:', Array.from(cachedTokens.keys()));
+    console.log('   Environment portal ID:', process.env.HUBSPOT_PORTAL_ID || 'not set');
+    return null;
+  }
+
+  // Legacy: No hub_id provided - check environment variables only
   if (process.env.HUBSPOT_ACCESS_TOKEN && process.env.HUBSPOT_REFRESH_TOKEN) {
     const tokens = {
       hub_id: process.env.HUBSPOT_PORTAL_ID || 'env-var-portal',
@@ -51,29 +89,13 @@ const getTokens = async (hub_id) => {
       updatedAt: Date.now()
     };
 
-    console.log('[OK] Tokens loaded from environment variables (single-tenant mode)');
+    console.log('[OK] Tokens loaded from environment variables (no hub_id specified)');
     console.log('   Portal ID:', tokens.hub_id);
     console.log('   Expires at:', new Date(tokens.expiresAt).toISOString());
     return tokens;
   }
 
-  // Multi-tenant: require hub_id to retrieve tokens
-  if (!hub_id) {
-    console.log('[ERROR] hub_id is required to retrieve tokens in multi-tenant mode');
-    return null;
-  }
-
-  // Get tokens from cache for this specific portal
-  const tokens = cachedTokens.get(hub_id);
-
-  if (tokens) {
-    console.log('[OK] Tokens loaded from cache for portal:', hub_id);
-    console.log('   Cached:', Math.round((Date.now() - tokens.updatedAt) / 1000), 'seconds ago');
-    return tokens;
-  }
-
-  console.log('[ERROR] No tokens found for portal:', hub_id);
-  console.log('   Available portals in cache:', Array.from(cachedTokens.keys()));
+  console.log('[ERROR] No hub_id provided and no environment variables set');
   return null;
 };
 
