@@ -16,7 +16,17 @@ const exchangeForTokens = async (exchangeProof) => {
 
     if (!response.ok) {
       console.error('Error exchanging authorization code:', tokens);
-      return { error: true, message: tokens.message || 'Token exchange failed' };
+      console.error('       > Status:', response.status);
+      console.error('       > Error type:', tokens.status || tokens.error);
+      console.error('       > Error description:', tokens.error_description || tokens.message);
+
+      // Provide helpful message for common errors
+      if (tokens.status === 'BAD_AUTH_CODE' || tokens.error === 'invalid_request') {
+        console.error('       > HINT: Authorization codes are single-use and expire quickly (5-10 minutes).');
+        console.error('       > If you refreshed the page or clicked back, you need to restart from /install');
+      }
+
+      return { error: true, message: tokens.message || tokens.error_description || 'Token exchange failed' };
     }
 
     console.log('       > Successfully exchanged authorization code for tokens');
@@ -54,7 +64,7 @@ exports.handler = async (event, context) => {
   }
 
   const authCode = params.code;
-  console.log('       > Received authorization code');
+  console.log('       > Received authorization code (first 20 chars):', authCode.substring(0, 20) + '...');
 
   const authCodeProof = {
     grant_type: 'authorization_code',
@@ -64,11 +74,20 @@ exports.handler = async (event, context) => {
     code: authCode
   };
 
+  console.log('       > Token exchange parameters:');
+  console.log('         - client_id:', CLIENT_ID);
+  console.log('         - redirect_uri:', REDIRECT_URI);
+
   // Step 4: Exchange the authorization code for tokens
   console.log('===> Step 4: Exchanging authorization code for access token and refresh token');
   const tokens = await exchangeForTokens(authCodeProof);
 
   if (tokens.error) {
+    const isBadAuthCode = tokens.message && (
+      tokens.message.includes('auth code') ||
+      tokens.message.includes('invalid_request')
+    );
+
     return {
       statusCode: 400,
       headers: { 'Content-Type': 'text/html' },
@@ -92,12 +111,45 @@ exports.handler = async (event, context) => {
               border-radius: 8px;
               margin: 20px 0;
             }
+            .info {
+              background: #f0f9ff;
+              border-left: 4px solid #0284c7;
+              padding: 15px;
+              margin: 20px 0;
+              text-align: left;
+            }
+            .cta {
+              display: inline-block;
+              background: #0ea5e9;
+              color: white;
+              padding: 12px 24px;
+              text-decoration: none;
+              border-radius: 6px;
+              margin-top: 20px;
+            }
+            .cta:hover {
+              background: #0284c7;
+            }
           </style>
         </head>
         <body>
           <h2>OAuth Error</h2>
           <div class="error">${tokens.message}</div>
-          <p>You can close this window and try again.</p>
+          ${isBadAuthCode ? `
+            <div class="info">
+              <h3>What happened?</h3>
+              <p>Authorization codes are single-use and expire within 5-10 minutes. This error typically occurs when:</p>
+              <ul style="text-align: left; margin: 10px 0;">
+                <li>The page was refreshed after the callback</li>
+                <li>The browser back button was used</li>
+                <li>The authorization code expired before use</li>
+                <li>You're testing the OAuth flow repeatedly</li>
+              </ul>
+            </div>
+            <a href="/.netlify/functions/install" class="cta">Start Fresh Installation</a>
+          ` : `
+            <p><a href="/.netlify/functions/install">Try installing again</a></p>
+          `}
         </body>
         </html>
       `
