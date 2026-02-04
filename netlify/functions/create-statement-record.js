@@ -323,24 +323,81 @@ exports.handler = async (event, context) => {
     const newRecordId = createResponseBody.id;
     console.log('[OK] Statement record created:', newRecordId);
 
-    // Step 2: Associate the new record with the current contact/company
-    // v4 API: PUT /crm/v4/objects/{fromObjectType}/{fromObjectId}/associations/{toObjectType}/{toObjectId}
+    // Step 2: Fetch available association types between source object and custom object
+    console.log('[HUBSPOT] Fetching association types between', currentObjectTypeId, 'and', GATHR_STATEMENT_OBJECT_TYPE_ID);
+
+    const associationSchemaUrl = `${region}/crm/v4/associations/${currentObjectTypeId}/${GATHR_STATEMENT_OBJECT_TYPE_ID}/labels`;
+
+    let associationTypeId;
+    let associationCategory = 'HUBSPOT_DEFINED';
+
+    try {
+      const schemaResponse = await makeHubSpotRequest(
+        associationSchemaUrl,
+        { method: 'GET' },
+        accessToken,
+        hub_id
+      );
+
+      if (schemaResponse.ok) {
+        const schemaResponseBody = await schemaResponse.json();
+        console.log('[HUBSPOT] Association schema response:', schemaResponseBody);
+
+        if (schemaResponseBody.results && schemaResponseBody.results.length > 0) {
+          // Use the first primary association type
+          const primaryAssoc = schemaResponseBody.results.find(a => a.label && a.label.toLowerCase().includes('primary'))
+            || schemaResponseBody.results[0];
+
+          associationTypeId = primaryAssoc.typeId;
+          associationCategory = primaryAssoc.category || 'HUBSPOT_DEFINED';
+
+          console.log('[OK] Found association type:', {
+            typeId: associationTypeId,
+            category: associationCategory,
+            label: primaryAssoc.label
+          });
+        } else {
+          console.log('[WARN] No association types found in schema response');
+        }
+      } else {
+        const errorBody = await schemaResponse.text();
+        console.log('[WARN] Failed to fetch association schema:', schemaResponse.status, errorBody);
+      }
+    } catch (error) {
+      console.log('[WARN] Error fetching association schema:', error.message);
+    }
+
+    // If we couldn't find the association type, return error
+    if (!associationTypeId) {
+      console.error('[ERROR] Could not determine association type');
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Association type not found',
+          message: 'Could not find association type between ' + currentObjectTypeId + ' and ' + GATHR_STATEMENT_OBJECT_TYPE_ID,
+          hint: 'Please ensure the custom object schema defines associations with contacts/companies',
+          createdRecordId: newRecordId,
+          note: 'Record was created but could not be associated'
+        })
+      };
+    }
+
+    // Step 3: Create the association
     const associateUrl = `${region}/crm/v4/objects/${currentObjectTypeId}/${currentRecordId}/associations/${GATHR_STATEMENT_OBJECT_TYPE_ID}/${newRecordId}`;
 
-    // Determine the association type category/typeId
-    // For standard objects (contacts/companies) to custom objects, we need to use the primary association
     const associationPayload = [
       {
-        associationCategory: "USER_DEFINED",
-        associationTypeId: 1 // Primary association
+        associationCategory: associationCategory,
+        associationTypeId: associationTypeId
       }
     ];
 
-    console.log('[HUBSPOT] Associating record:', {
+    console.log('[HUBSPOT] Creating association:', {
       url: associateUrl,
       from: { objectTypeId: currentObjectTypeId, objectId: currentRecordId },
       to: { objectTypeId: GATHR_STATEMENT_OBJECT_TYPE_ID, objectId: newRecordId },
-      associationType: associationPayload
+      payload: associationPayload
     });
 
     const associateResponse = await makeHubSpotRequest(
