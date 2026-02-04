@@ -115,21 +115,12 @@ exports.handler = async (event, context) => {
     try {
         // Parse request body
         const body = JSON.parse(event.body);
-        const { objectTypeId, hubspotRegion } = body;
+        const { hubspotRegion } = body;
 
         console.log('[REQUEST] Get object schema request:', {
-            objectTypeId,
             hubspotRegion
         });
 
-        // Validate required fields
-        if (!objectTypeId) {
-            return {
-                statusCode: 400,
-                headers,
-                body: JSON.stringify({ error: 'Missing required field: objectTypeId is required' })
-            };
-        }
 
         // Get access token
         let accessToken = await getAccessToken();
@@ -150,11 +141,10 @@ exports.handler = async (event, context) => {
 
         // Construct HubSpot API URL
         const region = hubspotRegion || 'https://api-eu1.hubapi.com';
-        const hubspotUrl = `${region}/crm/v3/objects/${objectTypeId}/schema`;
+        const hubspotUrl = `${region}/crm-object-schemas/v3/schemas`;
 
         console.log('[HUBSPOT] Fetching object schema:', {
-            url: hubspotUrl,
-            objectTypeId
+            url: hubspotUrl
         });
 
         const requestStart = Date.now();
@@ -163,8 +153,7 @@ exports.handler = async (event, context) => {
         let response = await fetch(hubspotUrl, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${accessToken}`,
-                'Content-Type': 'application/json'
+                'Authorization': `Bearer ${accessToken}`
             }
         });
 
