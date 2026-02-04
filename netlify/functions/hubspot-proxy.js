@@ -3,20 +3,21 @@ const fetch = require('node-fetch');
 const { getTokens, saveTokens, needsRefresh } = require('./token-store');
 
 // Function to get the current access token (with auto-refresh)
-const getAccessToken = async () => {
-  console.log('[AUTH] Getting access token...');
+// MULTI-TENANT: Requires hub_id to retrieve the correct portal's tokens
+const getAccessToken = async (hub_id) => {
+  console.log('[AUTH] Getting access token for portal:', hub_id);
 
   // Try to get from persistent storage first
   try {
-    const tokens = await getTokens();
+    const tokens = await getTokens(hub_id);
 
     if (tokens && tokens.accessToken) {
-      console.log('   [OK] Found tokens in storage');
+      console.log('   [OK] Found tokens in storage for portal:', hub_id);
 
       // Check if token needs refresh
       if (needsRefresh(tokens)) {
         console.log('   [REFRESH] Token expired or expiring soon, refreshing...');
-        const newTokens = await refreshAccessToken(tokens.refreshToken);
+        const newTokens = await refreshAccessToken(hub_id, tokens.refreshToken);
         return newTokens.accessToken;
       }
 
@@ -26,19 +27,20 @@ const getAccessToken = async () => {
     console.log('   [WARN] Error accessing token storage:', error.message);
   }
 
-  // Fallback to environment variables (for backward compatibility)
+  // Fallback to environment variables (single-tenant dev/test only)
   if (process.env.HUBSPOT_ACCESS_TOKEN) {
-    console.log('   [OK] Falling back to environment variable');
+    console.log('   [OK] Falling back to environment variable (single-tenant mode)');
     return process.env.HUBSPOT_ACCESS_TOKEN;
   }
 
-  console.log('   [ERROR] No access token found');
+  console.log('   [ERROR] No access token found for portal:', hub_id);
   return null;
 };
 
 // Refresh token and save to persistent storage
-const refreshAccessToken = async (refreshToken) => {
-  console.log('[REFRESH] Refreshing access token...');
+// MULTI-TENANT: Requires hub_id to save the refreshed tokens for the correct portal
+const refreshAccessToken = async (hub_id, refreshToken) => {
+  console.log('[REFRESH] Refreshing access token for portal:', hub_id);
 
   const CLIENT_ID = process.env.CLIENT_ID;
   const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -72,7 +74,7 @@ const refreshAccessToken = async (refreshToken) => {
     throw new Error(`Failed to refresh token: ${tokens.message || response.statusText}`);
   }
 
-  console.log('[OK] Token refreshed successfully');
+  console.log('[OK] Token refreshed successfully for portal:', hub_id);
 
   // Save new tokens to persistent storage
   const newTokenData = {
@@ -82,8 +84,8 @@ const refreshAccessToken = async (refreshToken) => {
   };
 
   try {
-    await saveTokens(newTokenData);
-    console.log('   [OK] New tokens saved to storage');
+    await saveTokens(hub_id, newTokenData);
+    console.log('   [OK] New tokens saved to storage for portal:', hub_id);
   } catch (error) {
     console.error('   [WARN] Failed to save refreshed tokens:', error.message);
   }
@@ -99,7 +101,7 @@ exports.handler = async (event, context) => {
   // Enable CORS
   const headers = {
     'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Headers': 'Content-Type, X-HubSpot-Region, X-Requested-Path',
+    'Access-Control-Allow-Headers': 'Content-Type, X-HubSpot-Region, X-Requested-Path, X-Hub-Id',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
     'Content-Type': 'application/json'
   };
@@ -111,30 +113,47 @@ exports.handler = async (event, context) => {
   }
 
   try {
+    // Extract hub_id from headers (required for multi-tenant)
+    const hub_id = event.headers['x-hub-id'] || event.headers['X-Hub-Id'];
+
+    if (!hub_id) {
+      console.error('[ERROR] Missing hub_id in request headers');
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'hub_id is required in request headers for multi-tenant authentication',
+          hint: 'Include the HubSpot portal ID in headers: { "X-Hub-Id": "123456" }'
+        })
+      };
+    }
+
     // Get access token (now async with auto-refresh)
-    console.log('[AUTH] Attempting to get access token...');
-    let accessToken = await getAccessToken();
+    console.log('[AUTH] Attempting to get access token for portal:', hub_id);
+    let accessToken = await getAccessToken(hub_id);
 
     if (!accessToken) {
-      console.error('[ERROR] No access token available');
+      console.error('[ERROR] No access token available for portal:', hub_id);
       return {
         statusCode: 401,
         headers,
         body: JSON.stringify({
           error: 'No access token available. Please authenticate first.',
           needsAuth: true,
-          hint: 'Complete OAuth flow at /oauth-start or set HUBSPOT_ACCESS_TOKEN environment variable'
+          hint: 'Complete OAuth flow at /oauth-start or set HUBSPOT_ACCESS_TOKEN environment variable',
+          hub_id: hub_id
         })
       };
     }
 
-    console.log('[OK] Access token found, length:', accessToken.length);
+    console.log('[OK] Access token found for portal:', hub_id, 'length:', accessToken.length);
 
     // Get the HubSpot API path from the request
     const requestedPath = event.headers['x-requested-path'] || event.headers['X-Requested-Path'];
     const hubspotRegion = event.headers['x-hubspot-region'] || event.headers['X-HubSpot-Region'] || 'https://api.hubapi.com';
 
     console.log('[REQUEST] Request Details:', {
+      hub_id,
       requestedPath,
       hubspotRegion,
       method: event.httpMethod,
@@ -185,12 +204,12 @@ exports.handler = async (event, context) => {
 
     // If 401, try to refresh the token and retry once
     if (response.status === 401) {
-      console.log('[REFRESH] Received 401, attempting to refresh token...');
+      console.log('[REFRESH] Received 401, attempting to refresh token for portal:', hub_id);
       try {
         // Get current tokens to retrieve refresh token
-        const tokens = await getTokens();
+        const tokens = await getTokens(hub_id);
         if (tokens && tokens.refreshToken) {
-          const newTokens = await refreshAccessToken(tokens.refreshToken);
+          const newTokens = await refreshAccessToken(hub_id, tokens.refreshToken);
           accessToken = newTokens.accessToken;
           requestOptions.headers.Authorization = `Bearer ${accessToken}`;
           response = await fetch(hubspotUrl, requestOptions);

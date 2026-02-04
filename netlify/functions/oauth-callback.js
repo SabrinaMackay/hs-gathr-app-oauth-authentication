@@ -104,20 +104,55 @@ exports.handler = async (event, context) => {
     };
   }
 
+  // Extract hub_id from token response (critical for multi-tenant)
+  const hub_id = tokens.hub_id;
+
+  if (!hub_id) {
+    console.error('[ERROR] No hub_id in token response - this should not happen!');
+    return {
+      statusCode: 500,
+      headers: { 'Content-Type': 'text/html' },
+      body: '<h2>Error: Missing hub_id in OAuth response</h2>'
+    };
+  }
+
   // Save tokens to cache and log for manual setup
   console.log('===> [OK] OAuth tokens received successfully!');
+  console.log('       Portal ID:', hub_id);
   console.log('       Access Token (first 10 chars):', tokens.access_token.substring(0, 10) + '...');
   console.log('       Refresh Token (first 10 chars):', tokens.refresh_token.substring(0, 10) + '...');
   console.log('       Expires in:', tokens.expires_in, 'seconds');
 
   const { saveTokens } = require('./token-store');
-  await saveTokens(tokens);
+  await saveTokens(hub_id, tokens);
 
   console.log('');
-  console.log('[SETUP] For persistent storage, copy these tokens to Netlify environment variables:');
-  console.log('   HUBSPOT_ACCESS_TOKEN=' + tokens.access_token);
-  console.log('   HUBSPOT_REFRESH_TOKEN=' + tokens.refresh_token);
+  console.log('[SETUP] For persistent storage, copy these tokens to your database keyed by hub_id:');
+  console.log('   Portal ID (hub_id):', hub_id);
+  console.log('   Access Token:', tokens.access_token);
+  console.log('   Refresh Token:', tokens.refresh_token);
   console.log('');
+
+  // Auto-create Gathr Statements custom object during installation
+  console.log('===> Step 5: Creating Gathr Statements custom object');
+  let schemaResult = null;
+  try {
+    const { ensureGathrStatementsSchema } = require('./create-schema');
+    schemaResult = await ensureGathrStatementsSchema(
+      tokens.access_token,
+      hub_id,
+      'https://api.hubapi.com' // You can detect region from tokens if needed
+    );
+
+    console.log('[OK] Gathr Statements schema ready:', {
+      objectTypeId: schemaResult.objectTypeId,
+      status: schemaResult.created ? 'created' : 'already exists'
+    });
+  } catch (schemaError) {
+    console.error('[WARN] Failed to create Gathr Statements schema:', schemaError.message);
+    console.error('   You may need to create the schema manually');
+    // Don't fail the entire OAuth flow - schema can be created later
+  }
 
   // Return success page with tokens for manual setup
   return {
@@ -146,17 +181,61 @@ exports.handler = async (event, context) => {
             margin: 20px 0;
             text-align: center;
           }
-
+          .info {
+            background: #f0f9ff;
+            border-left: 4px solid #0284c7;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+          }
+          .info h3 {
+            margin-top: 0;
+            color: #0369a1;
+          }
+          code {
+            background: #f1f5f9;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.9em;
+          }
         </style>
       </head>
       <body>
         <div class="success">
-          <div class="checkmark">OK</div>
-          <h2>OAuth Tokens Received!</h2>
-          <p>HubSpot authentication was successful.</p>
-          <p>[OK] Tokens are cached for 10 minutes for immediate testing</p>
+          <div class="checkmark">✓</div>
+          <h2>Installation Complete!</h2>
+          <p>HubSpot authentication was successful for portal <strong>${hub_id}</strong>.</p>
+          <p>✓ Tokens are cached in memory for immediate testing</p>
+          ${schemaResult ? `
+            <p>✓ Gathr Statements custom object ${schemaResult.created ? 'created' : 'verified'}</p>
+            <p style="font-size: 0.85em; margin-top: 10px;">Object Type ID: <code>${schemaResult.objectTypeId}</code></p>
+          ` : '<p style="color: #b45309;">⚠ Custom object creation pending</p>'}
         </div>
-        
+
+        ${schemaResult ? `
+        <div class="info">
+          <h3>Gathr Statements Custom Object</h3>
+          <p>The custom object has been ${schemaResult.created ? 'created' : 'verified'} with the following properties:</p>
+          <ul style="text-align: left; margin: 10px 0;">
+            <li><code>statement_id</code> - Display name (e.g., bank name)</li>
+            <li><code>has_file</code> - File upload status</li>
+            <li><code>gathr_statement_id</code> - Gathr API statement ID(s)</li>
+            <li><code>bank_account_id</code> - Bank account ID(s)</li>
+            <li><code>customer_id</code> - Customer ID(s)</li>
+            <li><code>account_number</code> - Account number(s)</li>
+            <li><code>statement_file</code> - Uploaded file reference</li>
+          </ul>
+          <p style="font-size: 0.9em; margin-top: 10px;">
+            Associated with: <strong>Contacts</strong> and <strong>Companies</strong>
+          </p>
+        </div>
+        ` : ''}
+
+        <div class="info">
+          <h3>Multi-Tenant Setup</h3>
+          <p>Each portal has isolated tokens and schemas. Your custom object is specific to portal <code>${hub_id}</code>.</p>
+        </div>
+
       </body>
       </html>
     `

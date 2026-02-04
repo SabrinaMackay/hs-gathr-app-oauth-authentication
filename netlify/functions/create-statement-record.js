@@ -6,19 +6,20 @@ const fetch = require('node-fetch');
 const { getTokens, needsRefresh, saveTokens } = require('./token-store');
 
 // Get the current access token (with auto-refresh)
-const getAccessToken = async () => {
-  console.log('[AUTH] Getting access token...');
+// MULTI-TENANT: Requires hub_id to retrieve the correct portal's tokens
+const getAccessToken = async (hub_id) => {
+  console.log('[AUTH] Getting access token for portal:', hub_id);
 
   try {
-    const tokens = await getTokens();
+    const tokens = await getTokens(hub_id);
 
     if (tokens && tokens.accessToken) {
-      console.log('   [OK] Found tokens in storage');
+      console.log('   [OK] Found tokens in storage for portal:', hub_id);
 
       // Check if token needs refresh
       if (needsRefresh(tokens)) {
         console.log('   [REFRESH] Token expired or expiring soon, refreshing...');
-        const newTokens = await refreshAccessToken(tokens.refreshToken);
+        const newTokens = await refreshAccessToken(hub_id, tokens.refreshToken);
         return newTokens.accessToken;
       }
 
@@ -28,19 +29,20 @@ const getAccessToken = async () => {
     console.log('   [WARN] Error accessing token storage:', error.message);
   }
 
-  // Fallback to environment variables
+  // Fallback to environment variables (single-tenant dev/test only)
   if (process.env.HUBSPOT_ACCESS_TOKEN) {
-    console.log('   [OK] Falling back to environment variable');
+    console.log('   [OK] Falling back to environment variable (single-tenant mode)');
     return process.env.HUBSPOT_ACCESS_TOKEN;
   }
 
-  console.log('   [ERROR] No access token found');
+  console.log('   [ERROR] No access token found for portal:', hub_id);
   return null;
 };
 
 // Refresh token helper
-const refreshAccessToken = async (refreshToken) => {
-  console.log('[REFRESH] Refreshing access token...');
+// MULTI-TENANT: Requires hub_id to save the refreshed tokens for the correct portal
+const refreshAccessToken = async (hub_id, refreshToken) => {
+  console.log('[REFRESH] Refreshing access token for portal:', hub_id);
 
   const CLIENT_ID = process.env.CLIENT_ID;
   const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -73,7 +75,7 @@ const refreshAccessToken = async (refreshToken) => {
     throw new Error(`Failed to refresh token: ${tokens.message || response.statusText}`);
   }
 
-  console.log('[OK] Token refreshed successfully');
+  console.log('[OK] Token refreshed successfully for portal:', hub_id);
 
   const newTokenData = {
     accessToken: tokens.access_token,
@@ -82,8 +84,8 @@ const refreshAccessToken = async (refreshToken) => {
   };
 
   try {
-    await saveTokens(newTokenData);
-    console.log('   [OK] New tokens saved to storage');
+    await saveTokens(hub_id, newTokenData);
+    console.log('   [OK] New tokens saved to storage for portal:', hub_id);
   } catch (error) {
     console.error('   [WARN] Failed to save refreshed tokens:', error.message);
   }
@@ -92,7 +94,8 @@ const refreshAccessToken = async (refreshToken) => {
 };
 
 // Make HubSpot API call with token refresh retry
-const makeHubSpotRequest = async (url, options, accessToken) => {
+// MULTI-TENANT: Requires hub_id to refresh tokens for the correct portal
+const makeHubSpotRequest = async (url, options, accessToken, hub_id) => {
   let response = await fetch(url, {
     ...options,
     headers: {
@@ -104,13 +107,13 @@ const makeHubSpotRequest = async (url, options, accessToken) => {
 
   // If 401, try to refresh token and retry once
   if (response.status === 401) {
-    console.log('[REFRESH] Received 401, attempting to refresh token...');
+    console.log('[REFRESH] Received 401, attempting to refresh token for portal:', hub_id);
     try {
-      const tokens = await getTokens();
+      const tokens = await getTokens(hub_id);
       if (tokens && tokens.refreshToken) {
-        const newTokens = await refreshAccessToken(tokens.refreshToken);
+        const newTokens = await refreshAccessToken(hub_id, tokens.refreshToken);
         accessToken = newTokens.accessToken;
-        
+
         // Retry request with new token
         response = await fetch(url, {
           ...options,
@@ -120,7 +123,7 @@ const makeHubSpotRequest = async (url, options, accessToken) => {
             ...options.headers
           }
         });
-        
+
         console.log('[HUBSPOT] Retry response after refresh:', response.status);
       }
     } catch (refreshError) {
@@ -160,13 +163,14 @@ exports.handler = async (event, context) => {
   try {
     // Parse request body
     const body = JSON.parse(event.body);
-    const { statementId, currentObjectTypeId, currentRecordId, hubspotRegion } = body;
+    const { statementId, currentObjectTypeId, currentRecordId, hubspotRegion, hub_id } = body;
 
     console.log('[REQUEST] Create record request:', {
       statementId,
       currentObjectTypeId,
       currentRecordId,
-      hubspotRegion
+      hubspotRegion,
+      hub_id
     });
 
     // Validate required fields
@@ -180,8 +184,21 @@ exports.handler = async (event, context) => {
       };
     }
 
-    // Get access token
-    let accessToken = await getAccessToken();
+    // MULTI-TENANT: hub_id is required to retrieve the correct portal's tokens
+    if (!hub_id) {
+      console.error('[ERROR] Missing hub_id in request body');
+      return {
+        statusCode: 400,
+        headers,
+        body: JSON.stringify({
+          error: 'hub_id is required in request body for multi-tenant authentication',
+          hint: 'Include the HubSpot portal ID in your request: { "hub_id": "123456" }'
+        })
+      };
+    }
+
+    // Get access token for this specific portal
+    let accessToken = await getAccessToken(hub_id);
 
     if (!accessToken) {
       console.error('[ERROR] No access token available');
@@ -197,9 +214,39 @@ exports.handler = async (event, context) => {
 
     console.log('[OK] Access token found');
 
-    // Construct HubSpot API URL
-    const GATHR_STATEMENT_OBJECT_TYPE_ID = "2-197849905";
+    // Get the Gathr Statements object type ID (portal-specific)
+    const { getGathrStatementsObjectTypeId } = require('./create-schema');
     const region = hubspotRegion || 'https://api-eu1.hubapi.com';
+
+    let GATHR_STATEMENT_OBJECT_TYPE_ID;
+    try {
+      GATHR_STATEMENT_OBJECT_TYPE_ID = await getGathrStatementsObjectTypeId(accessToken, hub_id, region);
+
+      if (!GATHR_STATEMENT_OBJECT_TYPE_ID) {
+        console.error('[ERROR] Gathr Statements custom object not found');
+        return {
+          statusCode: 404,
+          headers,
+          body: JSON.stringify({
+            error: 'Gathr Statements custom object not found in this portal',
+            hint: 'Please complete the installation process or create the custom object manually',
+            hub_id: hub_id
+          })
+        };
+      }
+
+      console.log('[OK] Found Gathr Statements object type ID:', GATHR_STATEMENT_OBJECT_TYPE_ID);
+    } catch (lookupError) {
+      console.error('[ERROR] Failed to lookup object type ID:', lookupError.message);
+      return {
+        statusCode: 500,
+        headers,
+        body: JSON.stringify({
+          error: 'Failed to lookup Gathr Statements custom object',
+          message: lookupError.message
+        })
+      };
+    }
 
     // Step 1: Create the new statement record
     const createUrl = `${region}/crm/v3/objects/${GATHR_STATEMENT_OBJECT_TYPE_ID}`;
@@ -219,7 +266,8 @@ exports.handler = async (event, context) => {
           }
         })
       },
-      accessToken
+      accessToken,
+      hub_id
     );
 
     console.log('[HUBSPOT] Create response:', {
@@ -274,7 +322,8 @@ exports.handler = async (event, context) => {
       {
         method: 'PUT'
       },
-      accessToken
+      accessToken,
+      hub_id
     );
 
     console.log('[HUBSPOT] Associate response:', {
