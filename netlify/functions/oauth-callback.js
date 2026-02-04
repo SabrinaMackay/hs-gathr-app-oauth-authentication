@@ -140,7 +140,6 @@ exports.handler = async (event, context) => {
   try {
     const { ensureGathrStatementsSchema } = require('./create-schema');
     schemaResult = await ensureGathrStatementsSchema(
-      tokens.access_token,
       hub_id,
       'https://api.hubapi.com' // You can detect region from tokens if needed
     );

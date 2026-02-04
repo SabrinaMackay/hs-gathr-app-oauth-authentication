@@ -180,7 +180,7 @@ exports.handler = async (event, context) => {
 
     let GATHR_STATEMENT_OBJECT_TYPE_ID;
     try {
-      GATHR_STATEMENT_OBJECT_TYPE_ID = await getGathrStatementsObjectTypeId(accessToken, hub_id, region);
+      GATHR_STATEMENT_OBJECT_TYPE_ID = await getGathrStatementsObjectTypeId(hub_id, region);
 
       if (!GATHR_STATEMENT_OBJECT_TYPE_ID) {
         console.error('[ERROR] Gathr Statements custom object not found');

@@ -2,17 +2,110 @@
 // This verifies the custom object exists during installation (does not create it)
 
 const fetch = require('node-fetch');
+const { getTokens, needsRefresh, saveTokens } = require('./token-store');
+
+// Get the current access token (with auto-refresh)
+// MULTI-TENANT: Requires hub_id to retrieve the correct portal's tokens
+const getAccessToken = async (hub_id) => {
+  console.log('[SCHEMA AUTH] Getting access token for portal:', hub_id);
+
+  try {
+    const tokens = await getTokens(hub_id);
+
+    if (tokens && tokens.accessToken) {
+      console.log('   [OK] Found tokens in storage for portal:', hub_id);
+
+      // Check if token needs refresh
+      if (needsRefresh(tokens)) {
+        console.log('   [REFRESH] Token expired or expiring soon, refreshing...');
+        const newTokens = await refreshAccessToken(hub_id, tokens.refreshToken);
+        return newTokens.accessToken;
+      }
+
+      return tokens.accessToken;
+    }
+  } catch (error) {
+    console.log('   [WARN] Error accessing token storage:', error.message);
+  }
+
+  // Fallback to environment variables (single-tenant dev/test only)
+  if (process.env.HUBSPOT_ACCESS_TOKEN) {
+    console.log('   [OK] Falling back to environment variable (single-tenant mode)');
+    return process.env.HUBSPOT_ACCESS_TOKEN;
+  }
+
+  console.log('   [ERROR] No access token found for portal:', hub_id);
+  return null;
+};
+
+// Refresh token helper
+// MULTI-TENANT: Requires hub_id to save the refreshed tokens for the correct portal
+const refreshAccessToken = async (hub_id, refreshToken) => {
+  console.log('[SCHEMA REFRESH] Refreshing access token for portal:', hub_id);
+
+  const CLIENT_ID = process.env.CLIENT_ID;
+  const CLIENT_SECRET = process.env.CLIENT_SECRET;
+
+  const tokenToUse = refreshToken || process.env.HUBSPOT_REFRESH_TOKEN;
+
+  if (!tokenToUse) {
+    throw new Error('No refresh token available');
+  }
+
+  if (!CLIENT_ID || !CLIENT_SECRET) {
+    throw new Error('Missing CLIENT_ID or CLIENT_SECRET environment variables');
+  }
+
+  const response = await fetch('https://api.hubapi.com/oauth/v1/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      client_id: CLIENT_ID,
+      client_secret: CLIENT_SECRET,
+      refresh_token: tokenToUse
+    }).toString()
+  });
+
+  const tokens = await response.json();
+
+  if (!response.ok) {
+    console.error('[ERROR] Token refresh failed:', tokens);
+    throw new Error(`Failed to refresh token: ${tokens.message || response.statusText}`);
+  }
+
+  console.log('[OK] Token refreshed successfully for portal:', hub_id);
+
+  const newTokenData = {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token || tokenToUse,
+    expiresAt: Date.now() + (tokens.expires_in * 1000)
+  };
+
+  try {
+    await saveTokens(hub_id, newTokenData);
+    console.log('   [OK] New tokens saved to storage for portal:', hub_id);
+  } catch (error) {
+    console.error('   [WARN] Failed to save refreshed tokens:', error.message);
+  }
+
+  return newTokenData;
+};
 
 /**
  * Creates the Gathr Statements custom object schema in HubSpot
- * @param {string} accessToken - OAuth access token for the portal
- * @param {string} hub_id - Portal ID for logging
+ * @param {string} hub_id - Portal ID
  * @param {string} region - HubSpot API region (default: api.hubapi.com)
  * @returns {Promise<Object>} The created schema object
  */
-const createGathrStatementsSchema = async (accessToken, hub_id, region = 'https://api.hubapi.com') => {
+const createGathrStatementsSchema = async (hub_id, region = 'https://api.hubapi.com') => {
   console.log('[SCHEMA] Creating Gathr Statements custom object for portal:', hub_id);
 
+  // Get access token for this portal
+  const accessToken = await getAccessToken(hub_id);
+  if (!accessToken) {
+    throw new Error('No access token available for portal: ' + hub_id);
+  }
   const schemaDefinition = {
     name: "gathr_statements",
     labels: {
@@ -140,13 +233,19 @@ const createGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
 
 /**
  * Gets existing schema if it already exists
- * @param {string} accessToken - OAuth access token
  * @param {string} hub_id - Portal ID
  * @param {string} region - HubSpot API region
  * @returns {Promise<Object|null>} Existing schema or null
  */
-const getExistingSchema = async (accessToken, hub_id, region = 'https://api.hubapi.com') => {
+const getExistingSchema = async (hub_id, region = 'https://api.hubapi.com') => {
   console.log('[SCHEMA] Checking for existing Gathr Statements schema for portal:', hub_id);
+
+  // Get access token for this portal
+  const accessToken = await getAccessToken(hub_id);
+  if (!accessToken) {
+    console.error('[SCHEMA] No access token available for portal:', hub_id);
+    return null;
+  }
 
   try {
     const response = await fetch(`${region}/crm/v3/schemas`, {
@@ -186,14 +285,13 @@ const getExistingSchema = async (accessToken, hub_id, region = 'https://api.huba
 
 /**
  * Checks if the Gathr Statements schema exists - does NOT create it
- * @param {string} accessToken - OAuth access token
  * @param {string} hub_id - Portal ID
  * @param {string} region - HubSpot API region
  * @returns {Promise<Object>} Schema info with objectTypeId or warning if not found
  */
-const ensureGathrStatementsSchema = async (accessToken, hub_id, region = 'https://api.hubapi.com') => {
+const ensureGathrStatementsSchema = async (hub_id, region = 'https://api.hubapi.com') => {
   // Check if schema already exists
-  const existingSchema = await getExistingSchema(accessToken, hub_id, region);
+  const existingSchema = await getExistingSchema(hub_id, region);
 
   if (existingSchema) {
     console.log('[SCHEMA] Found existing gathr_statements schema');
@@ -216,13 +314,12 @@ const ensureGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
 
 /**
  * Gets the object type ID for the Gathr Statements schema
- * @param {string} accessToken - OAuth access token
  * @param {string} hub_id - Portal ID
  * @param {string} region - HubSpot API region
  * @returns {Promise<string|null>} Object type ID or null if not found
  */
-const getGathrStatementsObjectTypeId = async (accessToken, hub_id, region = 'https://api.hubapi.com') => {
-  const schema = await getExistingSchema(accessToken, hub_id, region);
+const getGathrStatementsObjectTypeId = async (hub_id, region = 'https://api.hubapi.com') => {
+  const schema = await getExistingSchema(hub_id, region);
   return schema ? schema.objectTypeId : null;
 };
 
