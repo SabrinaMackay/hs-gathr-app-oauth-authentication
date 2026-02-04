@@ -133,8 +133,8 @@ exports.handler = async (event, context) => {
   console.log('   Refresh Token:', tokens.refresh_token);
   console.log('');
 
-  // Auto-create Gathr Statements custom object during installation
-  console.log('===> Step 5: Creating Gathr Statements custom object');
+  // Check for Gathr Statements custom object during installation
+  console.log('===> Step 5: Checking for Gathr Statements custom object');
   let schemaResult = null;
   let schemaError = null;
   try {
@@ -145,15 +145,17 @@ exports.handler = async (event, context) => {
       'https://api.hubapi.com' // You can detect region from tokens if needed
     );
 
-    console.log('[OK] Gathr Statements schema ready:', {
-      objectTypeId: schemaResult.objectTypeId,
-      status: schemaResult.created ? 'created' : 'already exists'
-    });
+    if (schemaResult.exists) {
+      console.log('[OK] Gathr Statements schema found:', {
+        objectTypeId: schemaResult.objectTypeId
+      });
+    } else {
+      console.log('[WARN] Gathr Statements schema not found - customer needs to create it manually');
+    }
   } catch (error) {
     schemaError = error;
-    console.error('[WARN] Failed to create Gathr Statements schema:', error.message);
-    console.error('   You may need to create the schema manually or reinstall with correct scopes');
-    // Don't fail the entire OAuth flow - schema can be created later
+    console.error('[WARN] Failed to check Gathr Statements schema:', error.message);
+    // Don't fail the entire OAuth flow - schema can be created manually
   }
 
   // Return success page with tokens for manual setup
@@ -207,27 +209,57 @@ exports.handler = async (event, context) => {
           <h2>Installation Complete!</h2>
           <p>HubSpot authentication was successful for portal <strong>${hub_id}</strong>.</p>
           <p>Tokens are cached in memory for immediate testing</p>
-          ${schemaResult ? `
-            <p>Gathr Statements custom object ${schemaResult.created ? 'created' : 'verified'}</p>
+          ${schemaResult && schemaResult.exists ? `
+            <p>Gathr Statements custom object verified</p>
             <p style="font-size: 0.85em; margin-top: 10px;">Object Type ID: <code>${schemaResult.objectTypeId}</code></p>
-          ` : `<p style="color: #b45309;">Custom object creation ${schemaError && schemaError.message.includes('scopes') ? 'failed - missing scopes' : 'pending'}</p>`}
+          ` : ''}
         </div>
 
-        ${schemaResult ? `
+        ${schemaResult && schemaResult.exists ? `
         <div class="info">
           <h3>Gathr Statements Custom Object</h3>
-          <p>The custom object has been ${schemaResult.created ? 'created' : 'verified'} with the following properties:</p>
+          <p>The custom object has been verified with the following properties:</p>
           <ul style="text-align: left; margin: 10px 0;">
             <li><code>statement_id</code> - Display name (e.g., bank name)</li>
-            <li><code>has_file</code> - File upload status</li>
+            <li><code>statement</code> - Statement file upload</li>
             <li><code>gathr_statement_id</code> - Gathr API statement ID(s)</li>
             <li><code>bank_account_id</code> - Bank account ID(s)</li>
             <li><code>customer_id</code> - Customer ID(s)</li>
             <li><code>account_number</code> - Account number(s)</li>
-            <li><code>statement_file</code> - Uploaded file reference</li>
           </ul>
           <p style="font-size: 0.9em; margin-top: 10px;">
             Associated with: <strong>Contacts</strong> and <strong>Companies</strong>
+          </p>
+        </div>
+        ` : ''}
+
+        ${schemaResult && !schemaResult.exists ? `
+        <div class="info" style="border-left-color: #f59e0b; background: #fffbeb;">
+          <h3 style="color: #d97706;">Action Required: Create Custom Object</h3>
+          <p><strong>The "gathr_statements" custom object was not found in your HubSpot portal.</strong></p>
+
+          <p style="margin-top: 15px;"><strong>To complete setup, you need to manually create this custom object:</strong></p>
+          <ol style="text-align: left; margin: 10px 0 10px 20px;">
+            <li>In HubSpot, go to <strong>Settings</strong> → <strong>Data Management</strong> → <strong>Objects</strong></li>
+            <li>Click <strong>"Create custom object"</strong></li>
+            <li>Set the object name to: <code>gathr_statements</code></li>
+            <li>Add these required properties:
+              <ul style="margin: 5px 0 5px 20px; font-size: 0.9em;">
+                <li><code>statement_id</code> (text) - Primary display property</li>
+                <li><code>statement</code> (file) - Statement file upload</li>
+                <li><code>account_number</code> (text)</li>
+                <li><code>bank_account_id</code> (text)</li>
+                <li><code>customer_id</code> (text)</li>
+                <li><code>gathr_statement_id</code> (text)</li>
+              </ul>
+            </li>
+            <li>Associate it with <strong>Contacts</strong> and <strong>Companies</strong></li>
+            <li>Save the custom object</li>
+          </ol>
+
+          <p style="margin-top: 15px; font-size: 0.9em;">
+            <strong>Note:</strong> Creating custom objects requires a HubSpot Enterprise account.
+            The app installation will work, but you won't be able to use statement features until this object is created.
           </p>
         </div>
         ` : ''}
@@ -237,28 +269,12 @@ exports.handler = async (event, context) => {
           <p>Each portal has isolated tokens and schemas. Your custom object is specific to portal <code>${hub_id}</code>.</p>
         </div>
 
-        ${schemaError && schemaError.message.includes('scopes') ? `
+        ${schemaError ? `
         <div class="info" style="border-left-color: #dc2626; background: #fef2f2;">
-          <h3 style="color: #b91c1c;">Schema Creation Failed - Missing Scopes</h3>
-          <p><strong>The app needs additional permissions to create custom objects.</strong></p>
-
-          <p style="margin-top: 15px;"><strong>To fix this:</strong></p>
-          <ol style="text-align: left; margin: 10px 0 10px 20px;">
-            <li>Go to your HubSpot App Settings</li>
-            <li>Find "Gathr App" in your installed apps</li>
-            <li>Click "Uninstall" or "Manage"</li>
-            <li>Reinstall the app - it will request the required scopes:
-              <ul style="margin: 5px 0 5px 20px; font-size: 0.9em;">
-                <li><code>crm.schemas.custom.read</code></li>
-                <li><code>crm.schemas.custom.write</code></li>
-                <li><code>crm.objects.custom.read</code></li>
-                <li><code>crm.objects.custom.write</code></li>
-              </ul>
-            </li>
-            <li>Authorize the new permissions</li>
-          </ol>
-
-          <p style="margin-top: 15px;">Or manually create the "Gathr Statements" custom object in HubSpot with the properties listed above.</p>
+          <h3 style="color: #b91c1c;">Schema Check Failed</h3>
+          <p><strong>Unable to verify if the gathr_statements custom object exists.</strong></p>
+          <p style="margin-top: 10px;">Error: ${schemaError.message}</p>
+          <p style="margin-top: 15px;">Please ensure you have the correct permissions and that the custom object exists in your HubSpot portal.</p>
         </div>
         ` : ''}
 

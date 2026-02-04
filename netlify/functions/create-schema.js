@@ -1,5 +1,5 @@
-// Create Gathr Statements Custom Object Schema
-// This creates the custom object and associates it with contacts during installation
+// Check for Gathr Statements Custom Object Schema
+// This verifies the custom object exists during installation (does not create it)
 
 const fetch = require('node-fetch');
 
@@ -185,18 +185,18 @@ const getExistingSchema = async (accessToken, hub_id, region = 'https://api.huba
 };
 
 /**
- * Ensures the Gathr Statements schema exists - creates it if needed
+ * Checks if the Gathr Statements schema exists - does NOT create it
  * @param {string} accessToken - OAuth access token
  * @param {string} hub_id - Portal ID
  * @param {string} region - HubSpot API region
- * @returns {Promise<Object>} Schema info with objectTypeId
+ * @returns {Promise<Object>} Schema info with objectTypeId or warning if not found
  */
 const ensureGathrStatementsSchema = async (accessToken, hub_id, region = 'https://api.hubapi.com') => {
   // Check if schema already exists
   const existingSchema = await getExistingSchema(accessToken, hub_id, region);
 
   if (existingSchema) {
-    console.log('[SCHEMA] Using existing schema');
+    console.log('[SCHEMA] Found existing gathr_statements schema');
     return {
       exists: true,
       schema: existingSchema,
@@ -204,9 +204,14 @@ const ensureGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
     };
   }
 
-  // Create new schema
-  console.log('[SCHEMA] Creating new schema');
-  return await createGathrStatementsSchema(accessToken, hub_id, region);
+  // Schema not found - return warning
+  console.log('[SCHEMA] WARNING: gathr_statements schema not found');
+  console.log('[SCHEMA] Customer needs to manually create the schema before using the app');
+  return {
+    exists: false,
+    warning: 'gathr_statements custom object not found',
+    message: 'Please create the gathr_statements custom object manually in HubSpot before using this app'
+  };
 };
 
 /**

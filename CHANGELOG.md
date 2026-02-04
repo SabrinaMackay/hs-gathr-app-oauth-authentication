@@ -1,5 +1,73 @@
 # Changelog
 
+## 2026-02-04 - Schema Verification (No Automatic Creation)
+
+### Breaking Change: Removed Automatic Schema Creation
+
+**Problem:** The `crm.schemas.custom.write` OAuth scope does not exist in HubSpot's API. The app was requesting an invalid scope that would fail during OAuth installation.
+
+**Solution:** Changed from automatic schema creation to schema verification. The app now checks if the `gathr_statements` custom object exists and provides setup instructions if it doesn't.
+
+### Changes
+
+**Updated:** `netlify/functions/install.js`
+- Removed invalid `crm.schemas.custom.write` scope from default scopes
+- Updated scope comment to clarify `crm.schemas.custom.read` is view-only
+
+**Updated:** `netlify/functions/create-schema.js`
+- Renamed from "Create" to "Check" functionality
+- `ensureGathrStatementsSchema()` now only checks for existing schema (does not create)
+- Returns warning object if schema not found: `{ exists: false, warning: '...', message: '...' }`
+- Installation proceeds successfully even if schema doesn't exist
+
+**Updated:** `netlify/functions/oauth-callback.js`
+- Changed from "Creating" to "Checking" for Gathr Statements schema
+- Updated success page to show schema verification status
+- Added detailed warning section with manual setup instructions if schema not found
+- Removed scope error handling (no longer trying to create schemas)
+- Installation always succeeds, but warns user if manual setup is needed
+
+**Updated:** `README.md`
+- Changed "Automatic Schema Creation" section to "Gathr Statements Custom Object Setup"
+- Moved manual creation instructions to primary documentation (no longer an "if fails" option)
+- Removed `crm.schemas.custom.write` from required scopes list
+- Updated all scope strings and examples
+- Added note that Enterprise account is required for custom objects
+- Clarified that installation will proceed with warning if schema doesn't exist
+
+### Required OAuth Scopes (Updated)
+
+```bash
+SCOPE="crm.objects.contacts.read crm.objects.contacts.write crm.objects.companies.read crm.objects.companies.write crm.schemas.custom.read crm.objects.custom.read crm.objects.custom.write files"
+```
+
+**Removed:**
+- `crm.schemas.custom.write` (does not exist in HubSpot API)
+
+**Kept:**
+- `crm.schemas.custom.read` (for schema verification)
+- `crm.objects.custom.read` / `crm.objects.custom.write` (for working with custom object records)
+
+### Manual Schema Setup Required
+
+Customers must now manually create the `gathr_statements` custom object in HubSpot:
+
+1. Go to Settings → Data Management → Objects
+2. Create custom object named `gathr_statements`
+3. Add required properties (statement_id, statement, account_number, etc.)
+4. Associate with Contacts and Companies
+
+**Note:** Requires HubSpot Enterprise account.
+
+### Migration for Existing Installations
+
+If you previously installed with the invalid `crm.schemas.custom.write` scope:
+1. No action needed if schema already exists
+2. If schema doesn't exist, follow manual setup instructions above
+3. Reinstalling the app is optional (it will now request correct scopes)
+
+---
+
 ## 2026-02-04 - Multi-Tenant Support & Automatic Schema Creation
 
 ### Update: Required OAuth Scopes

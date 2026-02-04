@@ -5,7 +5,7 @@ This Netlify Functions-based OAuth server handles HubSpot authentication and API
 ## Features
 
 - **Multi-tenant architecture** - Each portal gets isolated tokens and schemas
-- **Automatic schema creation** - "Gathr Statements" custom object created during installation
+- **Schema verification** - Checks for "Gathr Statements" custom object during installation
 - OAuth 2.0 flow with HubSpot
 - Automatic token refresh (portal-specific)
 - Token storage (in-memory Map keyed by `hub_id`)
@@ -30,9 +30,9 @@ Portal C (hub_id: 333) → tokens[333] → p333_gathr_statements
 
 All API calls require `hub_id` to ensure proper token and schema isolation.
 
-## Automatic Schema Creation
+## Gathr Statements Custom Object Setup
 
-During OAuth installation, the "Gathr Statements" custom object is automatically created with:
+The "Gathr Statements" custom object must be manually created in HubSpot with the following configuration:
 
 ### Properties
 - `statement_id` (text) - Display name (e.g., bank name, account name)
@@ -46,25 +46,24 @@ During OAuth installation, the "Gathr Statements" custom object is automatically
 - Automatically associated with **Contacts**
 - Automatically associated with **Companies**
 
-### If Schema Creation Fails
+### Creating the Custom Object Manually
 
-If you see "Schema creation failed - missing scopes" during installation:
+**Important:** Creating custom objects requires a **HubSpot Enterprise account**.
 
-**Option 1: Reinstall with correct scopes**
-1. Uninstall the app from HubSpot
-2. Ensure the `SCOPE` environment variable includes `crm.schemas.custom.write`
-3. Reinstall via `/install` endpoint
-4. Authorize the new permissions
+To create the "Gathr Statements" custom object:
 
-**Option 2: Manually create the schema**
-1. Go to HubSpot Settings → Data Management → Objects
-2. Click "Create custom object"
-3. Name: "Gathr Statements"
-4. Singular label: "Gathr Statement"
-5. Plural label: "Gathr Statements"
-6. Add the properties listed above
-7. Associate with Contacts and Companies
-8. Save
+1. In HubSpot, go to **Settings** → **Data Management** → **Objects**
+2. Click **"Create custom object"**
+3. Configure the object:
+   - **Object name:** `gathr_statements`
+   - **Singular label:** "Gathr Statement"
+   - **Plural label:** "Gathr Statements"
+   - **Primary display property:** `statement_id`
+4. Add the properties listed above (see Properties section)
+5. Associate the object with **Contacts** and **Companies**
+6. Save the custom object
+
+**During Installation:** The app will check for this custom object during OAuth installation. If it's not found, you'll see a warning with setup instructions, but the installation will proceed successfully.
 
 ### Example Record
 ```json
@@ -351,10 +350,9 @@ Optional (for persistent token storage):
 
 The `SCOPE` environment variable should include these scopes (space or comma-separated):
 
-**Required for automatic schema creation:**
+**Required for custom object functionality:**
 ```
 crm.schemas.custom.read
-crm.schemas.custom.write
 crm.objects.custom.read
 crm.objects.custom.write
 ```
@@ -370,19 +368,17 @@ files
 
 **Full scope string:**
 ```bash
-SCOPE="crm.objects.contacts.read crm.objects.contacts.write crm.objects.companies.read crm.objects.companies.write crm.schemas.custom.read crm.schemas.custom.write crm.objects.custom.read crm.objects.custom.write files"
+SCOPE="crm.objects.contacts.read crm.objects.contacts.write crm.objects.companies.read crm.objects.companies.write crm.schemas.custom.read crm.objects.custom.read crm.objects.custom.write files"
 ```
 
 Or comma-separated:
 ```bash
-SCOPE="crm.objects.contacts.read,crm.objects.contacts.write,crm.objects.companies.read,crm.objects.companies.write,crm.schemas.custom.read,crm.schemas.custom.write,crm.objects.custom.read,crm.objects.custom.write,files"
+SCOPE="crm.objects.contacts.read,crm.objects.contacts.write,crm.objects.companies.read,crm.objects.companies.write,crm.schemas.custom.read,crm.objects.custom.read,crm.objects.custom.write,files"
 ```
 
 **If SCOPE is not set**, the app uses the default scopes listed above.
 
-**Important:** Without `crm.schemas.custom.write` scope, automatic schema creation will fail during installation. You can either:
-1. Set the correct scopes and reinstall the app
-2. Manually create the "Gathr Statements" custom object in HubSpot
+**Note:** The `crm.schemas.custom.read` scope allows the app to verify that the "Gathr Statements" custom object exists. The custom object must be created manually in HubSpot (see "Creating the Custom Object Manually" section above).
 
 ### Initial Authentication
 
