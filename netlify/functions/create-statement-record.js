@@ -324,18 +324,30 @@ exports.handler = async (event, context) => {
     console.log('[OK] Statement record created:', newRecordId);
 
     // Step 2: Associate the new record with the current contact/company
-    const associateUrl = `${region}/crm/v4/objects/${currentObjectTypeId}/${currentRecordId}/associations/default/${GATHR_STATEMENT_OBJECT_TYPE_ID}/${newRecordId}`;
+    // v4 API: PUT /crm/v4/objects/{fromObjectType}/{fromObjectId}/associations/{toObjectType}/{toObjectId}
+    const associateUrl = `${region}/crm/v4/objects/${currentObjectTypeId}/${currentRecordId}/associations/${GATHR_STATEMENT_OBJECT_TYPE_ID}/${newRecordId}`;
+
+    // Determine the association type category/typeId
+    // For standard objects (contacts/companies) to custom objects, we need to use the primary association
+    const associationPayload = [
+      {
+        associationCategory: "USER_DEFINED",
+        associationTypeId: 1 // Primary association
+      }
+    ];
 
     console.log('[HUBSPOT] Associating record:', {
       url: associateUrl,
       from: { objectTypeId: currentObjectTypeId, objectId: currentRecordId },
-      to: { objectTypeId: GATHR_STATEMENT_OBJECT_TYPE_ID, objectId: newRecordId }
+      to: { objectTypeId: GATHR_STATEMENT_OBJECT_TYPE_ID, objectId: newRecordId },
+      associationType: associationPayload
     });
 
     const associateResponse = await makeHubSpotRequest(
       associateUrl,
       {
-        method: 'PUT'
+        method: 'PUT',
+        body: JSON.stringify(associationPayload)
       },
       accessToken,
       hub_id
