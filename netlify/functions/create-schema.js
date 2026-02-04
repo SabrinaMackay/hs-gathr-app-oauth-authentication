@@ -63,7 +63,6 @@ const createGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
         description: "Gathr customer ID(s) - semicolon-separated for multiple customers",
         hasUniqueValue: false
       },
-      ,
       {
         name: "gathr_statement_id",
         label: "Gathr Statement ID",
@@ -71,7 +70,7 @@ const createGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
         fieldType: "text",
         description: "Gathr API statement ID(s) - semicolon-separated for multiple statements",
         hasUniqueValue: false
-      },
+      }
 
     ],
     associatedObjects: ["CONTACT", "COMPANY"]
@@ -104,6 +103,18 @@ const createGathrStatementsSchema = async (accessToken, hub_id, region = 'https:
         schema: responseBody,
         objectTypeId: responseBody.objectTypeId
       };
+    }
+
+    // Check for missing scopes error
+    if (response.status === 403 && responseBody.category === 'MISSING_SCOPES') {
+      console.error('[SCHEMA] Missing required scopes for schema creation');
+      console.error('   Required scopes: crm.schemas.custom.write, crm.schemas.custom.read');
+      console.error('   Error:', responseBody.message);
+
+      throw new Error(
+        'Missing required OAuth scopes. Please reinstall the app with the following scopes: ' +
+        'crm.schemas.custom.read, crm.schemas.custom.write, crm.objects.custom.read, crm.objects.custom.write'
+      );
     }
 
     console.error('[SCHEMA] Failed to create schema:', {
