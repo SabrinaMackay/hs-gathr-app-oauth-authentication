@@ -16,8 +16,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "node-fetch": "^2.6.7",
-    "@netlify/blobs": "^8.1.0"
+    "node-fetch": "^2.6.7"
   },
   "devDependencies": {
     "netlify-cli": "^17.0.0"
