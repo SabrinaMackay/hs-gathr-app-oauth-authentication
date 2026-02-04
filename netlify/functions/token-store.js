@@ -1,13 +1,12 @@
-// Token storage - Multi-tenant token storage by hub_id
-// For production, consider using a proper database like Redis or DynamoDB
+// Token storage - Multi-tenant token storage by hub_id using Netlify Blobs
+const { getStore } = require('@netlify/blobs');
 
-// In-memory cache to avoid parsing JSON on every request
-// Changed to Map for multi-tenant support: hub_id -> tokenData
-const cachedTokens = new Map();
-const CACHE_TTL = 60000; // 1 minute cache
+// Get the token store (persisted across function invocations)
+const getTokenStore = () => {
+  return getStore('oauth-tokens');
+};
 
-// Save tokens to environment variable simulation (for demo)
-// In production, this would write to a database keyed by hub_id
+// Save tokens to Netlify Blobs (persisted storage)
 const saveTokens = async (hub_id, tokens) => {
   if (!hub_id) {
     throw new Error('[STORE] hub_id is required for saving tokens');
@@ -25,35 +24,42 @@ const saveTokens = async (hub_id, tokens) => {
   console.log('   Access token (first 10 chars):', tokenData.accessToken.substring(0, 10) + '...');
   console.log('   Expires at:', new Date(tokenData.expiresAt).toISOString());
 
-  // Cache the tokens in memory, keyed by hub_id
-  cachedTokens.set(hub_id, tokenData);
-
-  console.log('[WARN] NOTE: Tokens are cached in memory only (multi-tenant)');
-  console.log('   For production, store tokens in a database keyed by hub_id');
-  console.log('   Currently storing tokens for', cachedTokens.size, 'portal(s)');
+  try {
+    const store = getTokenStore();
+    await store.setJSON(`tokens:${hub_id}`, tokenData);
+    console.log('[OK] Tokens saved to Netlify Blobs for portal:', hub_id);
+  } catch (error) {
+    console.error('[ERROR] Failed to save tokens to Netlify Blobs:', error.message);
+    throw error;
+  }
 
   return tokenData;
 };
 
-// Get current tokens from environment variables or cache
+// Get current tokens from Netlify Blobs or environment variables
 // For multi-tenant apps, hub_id is required to retrieve the correct tokens
 const getTokens = async (hub_id) => {
-  // Multi-tenant: Check cache first for hub-specific tokens
+  // Multi-tenant: Check Netlify Blobs first for hub-specific tokens
   if (hub_id) {
-    const tokens = cachedTokens.get(hub_id);
+    try {
+      const store = getTokenStore();
+      const tokens = await store.getWithMetadata(`tokens:${hub_id}`, { type: 'json' });
 
-    if (tokens) {
-      console.log('[OK] Tokens loaded from cache for portal:', hub_id);
-      console.log('   Cached:', Math.round((Date.now() - tokens.updatedAt) / 1000), 'seconds ago');
-      return tokens;
+      if (tokens && tokens.data) {
+        console.log('[OK] Tokens loaded from Netlify Blobs for portal:', hub_id);
+        console.log('   Stored:', Math.round((Date.now() - tokens.data.updatedAt) / 1000), 'seconds ago');
+        return tokens.data;
+      }
+    } catch (error) {
+      console.log('[WARN] Error reading from Netlify Blobs:', error.message);
     }
 
     // Check if environment variables match this hub_id (single-tenant fallback)
     if (process.env.HUBSPOT_ACCESS_TOKEN && process.env.HUBSPOT_REFRESH_TOKEN) {
-      const envPortalId = process.env.HUBSPOT_PORTAL_ID || 'env-var-portal';
+      const envPortalId = process.env.HUBSPOT_PORTAL_ID;
 
       // Only return env tokens if they match the requested hub_id
-      if (envPortalId === hub_id || envPortalId === 'env-var-portal') {
+      if (envPortalId && envPortalId === hub_id.toString()) {
         const tokens = {
           hub_id: envPortalId,
           accessToken: process.env.HUBSPOT_ACCESS_TOKEN,
@@ -68,11 +74,14 @@ const getTokens = async (hub_id) => {
         console.log('   Env Portal ID:', tokens.hub_id);
         console.log('   Expires at:', new Date(tokens.expiresAt).toISOString());
         return tokens;
+      } else {
+        console.log('[WARN] Environment tokens do not match requested portal');
+        console.log('   Requested:', hub_id);
+        console.log('   Env portal:', envPortalId || 'not set');
       }
     }
 
     console.log('[ERROR] No tokens found for portal:', hub_id);
-    console.log('   Available portals in cache:', Array.from(cachedTokens.keys()));
     console.log('   Environment portal ID:', process.env.HUBSPOT_PORTAL_ID || 'not set');
     return null;
   }
