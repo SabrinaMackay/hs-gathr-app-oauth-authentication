@@ -5,7 +5,7 @@ const Redis = require('ioredis');
 // Storage backend configuration
 const STORAGE_BACKEND = process.env.TOKEN_STORAGE_BACKEND || 'env'; // 'redis' or 'env'
 const AWS_REDIS_HOST = process.env.AWS_REDIS_HOST;
-const AWS_REDIS_PORT = process.env.AWS_REDIS_PORT || 6379;
+const AWS_REDIS_PORT = process.env.AWS_REDIS_PORT;
 const AWS_REDIS_PASSWORD = process.env.AWS_REDIS_PASSWORD;
 
 // Create Redis client (lazy initialization)
