@@ -107,7 +107,7 @@ const saveTokens = async (hub_id, tokens) => {
   console.log('[INFO] To enable persistent storage, set these environment variables:');
   console.log('   TOKEN_STORAGE_BACKEND=redis');
   console.log('   AWS_REDIS_HOST=<your-redis-host>');
-  console.log('   AWS_REDIS_PORT=<your-redis-port> (default: 6379)');
+  console.log('   AWS_REDIS_PORT=<your-redis-port>');
   console.log('   AWS_REDIS_PASSWORD=<your-redis-password> (optional)');
   console.log('   AWS_REDIS_TLS=true (optional, for TLS connections)');
   console.log('[INFO] Or manually set these environment variables for single-portal:');
